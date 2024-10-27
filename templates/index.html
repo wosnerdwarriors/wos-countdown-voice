@@ -8,15 +8,18 @@
     <style>
         .tab { cursor: pointer; }
         .tab.active { font-weight: bold; }
-        .guild-tabs, .log-tabs { margin-top: 20px; }
-        .channels, .controls, .logs { margin-top: 20px; }
+        .guild-tabs, .channels, .controls { margin-top: 20px; }
         .hidden { display: none; }
+        .btn-sound { margin-right: 10px; }
     </style>
 </head>
 <body>
     <div class="container">
         <h1 class="my-4 text-center">Discord Bot Control</h1>
         
+        <!-- Message Box -->
+        <div id="messageBox" class="alert alert-info" style="display: none;"></div>
+
         <!-- Buttons to switch between Servers and Logs -->
         <div class="btn-group mb-3" role="group">
             <button id="showServers" class="btn btn-primary" onclick="showSection('servers')">Servers</button>
@@ -30,27 +33,26 @@
                 <!-- Guild tabs will be loaded here dynamically -->
             </div>
             
-            <!-- Channels list with join buttons -->
-            <div id="channels" class="channels">
-                <div class="alert alert-info">Select a guild to see its channels</div>
+            <!-- Controls for sound and disconnecting -->
+            <div id="controls" class="controls">
+                <button class="btn btn-danger" onclick="leaveChannel()">Leave Voice Channel</button>
+                <button class="btn btn-secondary" onclick="stopPlaying()">Stop Playing</button>
+                <div id="soundButtons" class="mt-2">
+                    <!-- Sound buttons will be loaded here dynamically -->
+                </div>
             </div>
             
-            <!-- Always-visible Controls for sound and disconnecting -->
-            <div id="controls" class="controls">
-                <!-- Sound buttons and Leave button will be rendered here at page load -->
+            <!-- Channels list with join buttons -->
+            <div id="channels" class="channels">
+                <div class="alert alert-info">Select a server to see its channels.</div>
             </div>
         </div>
 
         <!-- Logs view -->
         <div id="logsSection" class="section hidden">
-            <!-- Log category tabs -->
-            <div id="logCategories" class="nav nav-tabs log-tabs">
-                <!-- Log category tabs will be loaded here dynamically -->
-            </div>
-
             <!-- Log messages display -->
             <div id="logs" class="logs">
-                <div class="alert alert-info">Select a category to view logs.</div>
+                <div class="alert alert-info">Logs will be displayed here.</div>
             </div>
         </div>
     </div>
@@ -62,9 +64,6 @@
     <script>
         let selectedGuildId = null;
         let selectedChannelId = null;
-        let activeCategory = 'all';
-        let lastLogId = 0;  // Store the last received log ID
-        let allLogs = [];  // Store all logs to display and filter
 
         function showSection(section) {
             document.getElementById('serversSection').classList.add('hidden');
@@ -81,6 +80,16 @@
                 document.getElementById('logsSection').classList.remove('hidden');
                 document.getElementById('showLogs').classList.add('btn-primary');
             }
+        }
+
+        function displayMessage(message, type = 'info') {
+            const messageBox = document.getElementById('messageBox');
+            messageBox.innerText = message;
+            messageBox.className = `alert alert-${type}`;
+            messageBox.style.display = 'block';
+            setTimeout(() => {
+                messageBox.style.display = 'none';
+            }, 5000);
         }
 
         async function loadGuilds() {
@@ -112,139 +121,99 @@
             if (channels.error) {
                 channelsContainer.innerHTML = `<div class="alert alert-danger">${channels.error}</div>`;
             } else {
-                const listGroup = document.createElement('div');
-                listGroup.className = 'list-group';
-                
+                channelsContainer.innerHTML = '';
                 channels.forEach(channel => {
-                    const channelItem = document.createElement('a');
-                    channelItem.className = 'list-group-item list-group-item-action';
-                    channelItem.innerText = channel.name;
+                    const channelRow = document.createElement('div');
+                    channelRow.className = 'd-flex justify-content-between align-items-center mb-2';
                     
+                    const channelName = document.createElement('span');
+                    channelName.innerText = channel.name;
+
                     const joinButton = document.createElement('button');
                     joinButton.className = 'btn btn-primary ml-2';
-                    joinButton.innerText = 'Join';
-                    joinButton.onclick = () => {
-                        selectedChannelId = channel.id;
-                        joinChannel(guildId, channel.id);
-                    };
+                    joinButton.innerText = 'Join Channel';
+                    joinButton.onclick = () => joinChannel(guildId, channel.id);
 
-                    channelItem.appendChild(joinButton);
-                    listGroup.appendChild(channelItem);
+                    channelRow.appendChild(channelName);
+                    channelRow.appendChild(joinButton);
+                    channelsContainer.appendChild(channelRow);
                 });
-
-                channelsContainer.appendChild(listGroup);
             }
         }
 
         async function displayControls() {
-            const controlsContainer = document.getElementById('controls');
+            const controlsContainer = document.getElementById('soundButtons');
             controlsContainer.innerHTML = '';
 
             const response = await fetch('/api/sounds');
             const sounds = await response.json();
 
-            const playHeader = document.createElement('h3');
-            playHeader.innerText = 'Available Sounds';
-            controlsContainer.appendChild(playHeader);
-
             sounds.forEach(sound => {
                 const playButton = document.createElement('button');
-                playButton.className = 'btn btn-secondary m-2';
+                playButton.className = 'btn btn-secondary btn-sound';
                 playButton.innerText = `Play ${sound}`;
-                playButton.onclick = () => playSound(selectedGuildId, selectedChannelId, sound);
+                playButton.onclick = () => playSound(sound);
                 controlsContainer.appendChild(playButton);
             });
-
-            const leaveButton = document.createElement('button');
-            leaveButton.className = 'btn btn-danger m-2';
-            leaveButton.innerText = 'Leave Channel';
-            leaveButton.onclick = () => leaveChannel(selectedGuildId, selectedChannelId);
-            controlsContainer.appendChild(leaveButton);
         }
 
-        async function loadLogCategories() {
-            const response = await fetch('/api/logs/categories');
-            const categories = await response.json();
-            const logCategoriesContainer = document.getElementById('logCategories');
-            logCategoriesContainer.innerHTML = '';
-
-            const allTab = document.createElement('a');
-            allTab.className = 'nav-item nav-link tab active';
-            allTab.innerText = 'All';
-            allTab.onclick = () => {
-                setActiveCategory('all');
-            };
-            logCategoriesContainer.appendChild(allTab);
-
-            categories.forEach(category => {
-                const categoryTab = document.createElement('a');
-                categoryTab.className = 'nav-item nav-link tab';
-                categoryTab.innerText = category;
-                categoryTab.onclick = () => {
-                    setActiveCategory(category);
-                };
-                logCategoriesContainer.appendChild(categoryTab);
+        async function joinChannel(guildId, channelId) {
+            const response = await fetch('/api/join', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ guildId, channelId })
             });
-        }
-
-        function setActiveCategory(category) {
-            activeCategory = category;
-            document.querySelectorAll('.log-tabs .tab').forEach(tab => tab.classList.remove('active'));
-            document.querySelector(`.log-tabs .tab:contains(${category === 'all' ? 'All' : category})`).classList.add('active');
-            displayLogs();
-        }
-
-        // Fetch new logs from the server, starting from the last log ID
-        async function fetchNewLogs() {
-            const response = await fetch(`/api/logs?last_log_id=${lastLogId}`);
-            const logs = await response.json();
-            
-            // Update the last log ID with the highest ID from the new logs
-            const logIds = Object.keys(logs).map(Number);
-            if (logIds.length > 0) {
-                lastLogId = Math.max(...logIds);
-            }
-
-            // Append the new logs to the allLogs array
-            Object.values(logs).forEach(log => {
-                allLogs.push(log);
-            });
-
-            displayLogs(); // Refresh displayed logs
-        }
-
-        // Display logs based on the active category
-        function displayLogs() {
-            const logsContainer = document.getElementById('logs');
-            logsContainer.innerHTML = '';
-
-            const filteredLogs = allLogs.filter(log => {
-                return activeCategory === 'all' || log.category === activeCategory;
-            });
-
-            logsContainer.innerHTML = filteredLogs.map(log => {
-                return `<div class="alert alert-${getLogSeverity(log.severity)}">${log.timestamp} - ${log.message}</div>`;
-            }).join('');
-        }
-
-        function getLogSeverity(severity) {
-            switch (severity.toLowerCase()) {
-                case 'debug': return 'secondary';
-                case 'info': return 'primary';
-                case 'warning': return 'warning';
-                case 'error': return 'danger';
-                case 'critical': return 'dark';
-                default: return 'light';
+            const result = await response.json();
+            if (response.ok) {
+                selectedChannelId = channelId;
+                displayMessage(result.message, 'success');
+            } else {
+                displayMessage(result.error || 'Failed to join the channel', 'danger');
             }
         }
 
-        // Fetch new logs every second
-        setInterval(fetchNewLogs, 1000);
+        async function leaveChannel() {
+            const response = await fetch('/api/leave', { method: 'POST' });
+            const result = await response.json();
+            if (response.ok) {
+                selectedChannelId = null;
+                displayMessage(result.message, 'success');
+            } else {
+                displayMessage(result.error || 'Failed to leave the channel', 'danger');
+            }
+        }
+
+        async function stopPlaying() {
+            const response = await fetch('/api/stop', { method: 'POST' });
+            const result = await response.json();
+            if (response.ok) {
+                displayMessage(result.message, 'success');
+            } else {
+                displayMessage(result.error || 'Failed to stop playing', 'danger');
+            }
+        }
+
+        async function playSound(sound) {
+            if (!selectedGuildId || !selectedChannelId) {
+                displayMessage('Please join a voice channel first.', 'warning');
+                return;
+            }
+            const response = await fetch('/api/play', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ guildId: selectedGuildId, sound })
+            });
+            const result = await response.json();
+            if (response.ok) {
+                displayMessage(result.message, 'success');
+            } else {
+                displayMessage(result.error || 'Failed to play the sound', 'danger');
+            }
+        }
 
         // Initialize on page load
         loadGuilds();
         displayControls();
-        loadLogCategories();
         showSection('servers');
     </script>
 </body>

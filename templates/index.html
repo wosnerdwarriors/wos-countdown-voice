@@ -64,6 +64,7 @@
     <script>
         let selectedGuildId = null;
         let selectedChannelId = null;
+        let lastLogId = 0;  // Store the last received log ID
 
         function showSection(section) {
             document.getElementById('serversSection').classList.add('hidden');
@@ -119,7 +120,7 @@
             channelsContainer.innerHTML = '';
 
             if (channels.error) {
-                channelsContainer.innerHTML = `<div class="alert alert-danger">${channels.error}</div>`;
+                displayMessage(channels.error, 'danger');
             } else {
                 channelsContainer.innerHTML = '';
                 channels.forEach(channel => {
@@ -210,6 +211,35 @@
                 displayMessage(result.error || 'Failed to play the sound', 'danger');
             }
         }
+
+        async function fetchLogs() {
+            const response = await fetch(`/api/logs?last_log_id=${lastLogId}`);
+            const logs = await response.json();
+
+            // Append new logs and update lastLogId
+            const logsContainer = document.getElementById('logs');
+            Object.values(logs).forEach(log => {
+                const logElement = document.createElement('div');
+                logElement.className = `alert alert-${getLogSeverity(log.severity)}`;
+                logElement.innerText = `${log.timestamp} - ${log.message}`;
+                logsContainer.appendChild(logElement);
+                lastLogId = Math.max(lastLogId, log.id);
+            });
+        }
+
+        function getLogSeverity(severity) {
+            switch (severity.toLowerCase()) {
+                case 'debug': return 'secondary';
+                case 'info': return 'primary';
+                case 'warning': return 'warning';
+                case 'error': return 'danger';
+                case 'critical': return 'dark';
+                default: return 'light';
+            }
+        }
+
+        // Fetch logs periodically
+        setInterval(fetchLogs, 3000);
 
         // Initialize on page load
         loadGuilds();

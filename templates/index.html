@@ -32,7 +32,7 @@
         </div>
 
         <!-- Category filter buttons -->
-        <div id="logCategoryButtons" class="btn-group mb-3" role="group">
+        <div id="logCategoryButtons" class="btn-group mb-3" role="group" style="display: none;">
             <!-- Buttons will be populated dynamically -->
         </div>
 
@@ -44,16 +44,12 @@
             </div>
 
             <!-- Controls for sound and disconnecting -->
-            <div id="controls" class="controls">
-                <button class="btn btn-danger" onclick="leaveChannel()">Leave Voice Channel</button>
-                <button class="btn btn-secondary" onclick="stopPlaying()">Stop Playing</button>
-                <div id="soundButtons" class="mt-2">
-                    <!-- Sound buttons will be loaded here dynamically -->
-                </div>
+            <div id="controls" class="controls mt-4">
+                <!-- Controls will be loaded dynamically when a server is selected -->
             </div>
 
             <!-- Channels list with join buttons -->
-            <div id="channels" class="channels">
+            <div id="channels" class="channels mt-4">
                 <div class="alert alert-info">Select a server to see its channels.</div>
             </div>
         </div>
@@ -107,7 +103,6 @@
             }
         }
 
-
         function displayMessage(message, type = 'info') {
             const messageBox = document.getElementById('messageBox');
             messageBox.innerText = message;
@@ -138,7 +133,6 @@
             });
         }
 
-        // Adjust `loadChannels` to call `displayControls` with the selected serverId
         async function loadChannels(guildId) {
             const response = await fetch(`/api/channels/${guildId}`);
             const channels = await response.json();
@@ -148,6 +142,9 @@
             if (channels.error) {
                 displayMessage(channels.error, 'danger');
             } else {
+                // Display sound controls with the current serverId
+                displayControls(guildId);
+
                 channels.forEach(channel => {
                     const channelRow = document.createElement('div');
                     channelRow.className = 'd-flex justify-content-between align-items-center mb-2';
@@ -164,16 +161,28 @@
                     channelRow.appendChild(joinButton);
                     channelsContainer.appendChild(channelRow);
                 });
-
-                // Display sound controls with the current serverId
-                displayControls(guildId);
             }
         }
 
         async function displayControls(serverId) {
-            const controlsContainer = document.getElementById('soundButtons');
-            controlsContainer.innerHTML = '';
+            const controlsContainer = document.getElementById('controls');
+            controlsContainer.innerHTML = ''; // Clear previous controls
 
+            // Create and add leave and stop buttons
+            const leaveButton = document.createElement('button');
+            leaveButton.className = 'btn btn-danger';
+            leaveButton.innerText = 'Leave Voice Channel';
+            leaveButton.onclick = () => leaveChannel();
+
+            const stopButton = document.createElement('button');
+            stopButton.className = 'btn btn-secondary';
+            stopButton.innerText = 'Stop Playing';
+            stopButton.onclick = () => stopPlaying();
+
+            controlsContainer.appendChild(leaveButton);
+            controlsContainer.appendChild(stopButton);
+
+            // Fetch and add sound play buttons
             const response = await fetch('/api/sounds');
             const sounds = await response.json();
 
@@ -261,13 +270,11 @@
 
             if (newLogsAdded) {
                 updateCategoryButtons();
-                // Get the currently active category button
                 const activeButton = document.querySelector('#logCategoryButtons .btn.active-category');
                 const activeCategory = activeButton ? activeButton.innerText.toLowerCase() : 'all';
                 filterLogsByCategory(activeCategory);
             }
         }
-
 
         function updateCategoryButtons() {
             const logCategoryButtons = document.getElementById('logCategoryButtons');
@@ -301,7 +308,6 @@
         setInterval(fetchLogs, 3000);
 
         loadGuilds();
-        displayControls();
         showSection('servers');
     </script>
 </body>

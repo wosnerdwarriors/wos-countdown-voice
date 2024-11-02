@@ -95,6 +95,7 @@
             document.getElementById('showLogs').classList.remove('btn-primary');
             document.getElementById('showServers').classList.add('btn-secondary');
             document.getElementById('showLogs').classList.add('btn-secondary');
+            document.getElementById('logCategoryButtons').style.display = 'none'; // Hide log category buttons by default
 
             if (section === 'servers') {
                 document.getElementById('serversSection').classList.remove('hidden');
@@ -102,8 +103,10 @@
             } else if (section === 'logs') {
                 document.getElementById('logsSection').classList.remove('hidden');
                 document.getElementById('showLogs').classList.add('btn-primary');
+                document.getElementById('logCategoryButtons').style.display = 'block'; // Show log category buttons when logs are active
             }
         }
+
 
         function displayMessage(message, type = 'info') {
             const messageBox = document.getElementById('messageBox');
@@ -237,6 +240,7 @@
             const response = await fetch(`/api/logs?last_log_id=${lastLogId}`);
             const logs = await response.json();
             const logsContainer = document.getElementById('logs');
+            let newLogsAdded = false;
 
             Object.values(logs).forEach(log => {
                 const logRow = document.createElement('tr');
@@ -252,10 +256,18 @@
                 logsContainer.appendChild(logRow);
                 categories.add(log.category);
                 lastLogId = Math.max(lastLogId, log.id);
+                newLogsAdded = true;
             });
 
-            updateCategoryButtons();
+            if (newLogsAdded) {
+                updateCategoryButtons();
+                // Get the currently active category button
+                const activeButton = document.querySelector('#logCategoryButtons .btn.active-category');
+                const activeCategory = activeButton ? activeButton.innerText.toLowerCase() : 'all';
+                filterLogsByCategory(activeCategory);
+            }
         }
+
 
         function updateCategoryButtons() {
             const logCategoryButtons = document.getElementById('logCategoryButtons');

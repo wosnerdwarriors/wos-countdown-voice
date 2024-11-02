@@ -15,6 +15,7 @@
         .log-category { display: none; }
         .log-category-active { display: table-row; }
         .table-container { overflow-x: auto; }
+        .btn.active-category { background-color: green; color: white; }
     </style>
 </head>
 <body>
@@ -134,6 +135,7 @@
             });
         }
 
+        // Adjust `loadChannels` to call `displayControls` with the selected serverId
         async function loadChannels(guildId) {
             const response = await fetch(`/api/channels/${guildId}`);
             const channels = await response.json();
@@ -159,10 +161,13 @@
                     channelRow.appendChild(joinButton);
                     channelsContainer.appendChild(channelRow);
                 });
+
+                // Display sound controls with the current serverId
+                displayControls(guildId);
             }
         }
 
-        async function displayControls() {
+        async function displayControls(serverId) {
             const controlsContainer = document.getElementById('soundButtons');
             controlsContainer.innerHTML = '';
 
@@ -173,7 +178,7 @@
                 const playButton = document.createElement('button');
                 playButton.className = 'btn btn-secondary btn-sound';
                 playButton.innerText = `Play ${sound}`;
-                playButton.onclick = () => playSound(sound);
+                playButton.onclick = () => playSound(serverId, sound); // Pass the serverId here
                 controlsContainer.appendChild(playButton);
             });
         }
@@ -214,15 +219,11 @@
             }
         }
 
-        async function playSound(sound) {
-            if (!selectedGuildId || !selectedChannelId) {
-                displayMessage('Please join a voice channel first.', 'warning');
-                return;
-            }
+        async function playSound(serverId, sound) {
             const response = await fetch('/api/play', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ guildId: selectedGuildId, sound })
+                body: JSON.stringify({ guildId: serverId, sound }) // Use only serverId
             });
             const result = await response.json();
             if (response.ok) {
@@ -264,9 +265,19 @@
                 const button = document.createElement('button');
                 button.className = 'btn btn-outline-primary';
                 button.innerText = category === 'all' ? 'All' : category;
-                button.onclick = () => filterLogsByCategory(category);
+                button.onclick = () => {
+                    filterLogsByCategory(category);
+                    highlightActiveButton(button);
+                };
                 logCategoryButtons.appendChild(button);
             });
+        }
+
+        function highlightActiveButton(activeButton) {
+            document.querySelectorAll('#logCategoryButtons .btn').forEach(button => {
+                button.classList.remove('active-category');
+            });
+            activeButton.classList.add('active-category');
         }
 
         function filterLogsByCategory(category) {

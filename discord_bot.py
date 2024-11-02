@@ -11,6 +11,7 @@ import datetime
 with open("config.json", "r") as config_file:
 	config = json.load(config_file)
 
+# Configure logging
 logging.basicConfig(
 	level=logging.DEBUG,
 	format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -20,6 +21,7 @@ logger = logging.getLogger(__name__)
 global_logs = {}
 log_counter = 0  # Counter to generate unique IDs for logs
 
+# Configuration values
 bot_token = config.get("token")
 allowed_roles = config.get("roles-allowed-to-control-bot", [])
 purge_channel_ids = config.get("purge-and-repost-on-channel-ids", [])
@@ -31,17 +33,65 @@ intents.message_content = True
 intents.guilds = True
 intents.voice_states = True
 
+# Helper function to log messages
+def log_message(message, severity="info", category="catchall"):
+	global log_counter
+	log_id = log_counter
+	log_counter += 1
+	timestamp = datetime.datetime.now().isoformat()
+	log_entry = {
+		"id": log_id,
+		"timestamp": timestamp,
+		"severity": severity,
+		"category": category,
+		"message": message
+	}
+	global_logs[log_id] = log_entry
+	if severity.lower() == "debug":
+		logger.debug(message)
+	elif severity.lower() == "info":
+		logger.info(message)
+	elif severity.lower() == "warning":
+		logger.warning(message)
+	elif severity.lower() == "error":
+		logger.error(message)
+	elif severity.lower() == "critical":
+		logger.critical(message)
+	else:
+		logger.info(message)
+	return log_id
+
+# Custom log handler to link with global logs
+class CustomLogHandler(logging.Handler):
+	def emit(self, record):
+		message = self.format(record)
+		severity = record.levelname.lower()
+		log_message(message, severity=severity, category=record.name)
+
+discord_logger = logging.getLogger('discord')
+discord_logger.addHandler(CustomLogHandler())
+discord_logger.setLevel(logging.DEBUG)
+
+# Define the bot class
 class MyBot(commands.Bot):
 	def __init__(self):
 		super().__init__(command_prefix="!", intents=intents)
-		
+	
 	async def setup_hook(self):
 		log_message("setup_hook called", category="setup_hook")
 		try:
+			# Check if the command is already registered
+			if "postcontrols" not in self.all_commands:
+				self.add_command(post_controls)
+				log_message("postcontrols command registered.", category="setup_hook")
+			else:
+				log_message("postcontrols command already exists, skipping registration.", category="setup_hook")
+
 			await self.sync_commands()
 		except Exception as e:
 			log_message(f"Error during command sync: {str(e)}", severity="error", category="setup_hook")
 			logger.exception("Error during command sync.")
+
 
 	async def sync_commands(self):
 		log_message("Attempting to sync commands with Discord...", "debug", category="sync_commands")
@@ -54,49 +104,18 @@ class MyBot(commands.Bot):
 
 bot = MyBot()
 
-# Debug logging
-def log_message(message, severity="info", category="catchall"):
-	global log_counter
+# Command to post control buttons
+@bot.command(name="postcontrols")
+async def post_controls(ctx):
+	"""Command to post the control buttons in the current channel."""
+	log_message(f"Received /postcontrols command from user {ctx.author.display_name} in channel {ctx.channel.name}", category="post_controls")
+	await post_controls_helper(ctx.channel)
+	log_message("Control buttons posted successfully.", category="post_controls")
 
-	# Increment the log counter for a unique ID
-	log_id = log_counter
-	log_counter += 1
-
-	# Get the current timestamp
-	timestamp = datetime.datetime.now().isoformat()
-
-	# Create the log entry
-	log_entry = {
-		"id": log_id,
-		"timestamp": timestamp,
-		"severity": severity,
-		"category": category,
-		"message": message
-	}
-
-	# Store the log entry in global_logs using the log_id as the key
-	global_logs[log_id] = log_entry
-
-	# Use the logger to log the message based on severity
-	if severity.lower() == "debug":
-		logger.debug(message)
-	elif severity.lower() == "info":
-		logger.info(message)
-	elif severity.lower() == "warning":
-		logger.warning(message)
-	elif severity.lower() == "error":
-		logger.error(message)
-	elif severity.lower() == "critical":
-		logger.critical(message)
-	else:
-		logger.info(message)  # Default to info if the severity is unknown
-
-	return log_id  # Return the log ID for reference if needed
-
-# Check if user has permission based on roles
+# Helper function to check user permissions
 def user_has_permission(member: discord.Member):
 	log_message(f"Checking permissions for user {member.display_name}", category="user_has_permission")
-	if len(allowed_roles) == 0:
+	if not allowed_roles:
 		log_message("No specific roles defined, allowing all users.", category="user_has_permission")
 		return True
 	for role in member.roles:
@@ -106,7 +125,7 @@ def user_has_permission(member: discord.Member):
 	log_message(f"User {member.display_name} not allowed: no matching roles", category="user_has_permission")
 	return False
 
-# Helper function to post control buttons
+# Helper function to post control buttons in a channel
 async def post_controls_helper(channel, existing_message=None):
 	log_message(f"post_controls_helper called for channel: {channel}", category="post_controls_helper")
 	sound_files = [f[:-4] for f in os.listdir('sound-clips') if f.endswith('.mp3')]
@@ -179,13 +198,12 @@ async def post_controls_helper(channel, existing_message=None):
 		button.callback = button_callback
 		view.add_item(button)
 
-	# Edit the existing message or send a new one
 	if existing_message:
 		await existing_message.edit(content="Click a button to play a sound:", view=view)
 		log_message(f"Edited existing control message {existing_message}.", category="post_controls_helper")
 	else:
 		await channel.send("Controls for wos countdown:", view=view)
-		log_message(f"Posted new control message in channel {chanel}.", category="post_controls_helper")
+		log_message(f"Posted new control message in channel {channel}.", category="post_controls_helper")
 
 # Helper function to play sound
 async def play_sound(sound: str):
@@ -229,12 +247,11 @@ async def on_guild_join(guild):
 	await bot.sync_commands()
 
 async def purge_and_repost_controls():
-	log_message(f"purge_and_repost_controls Starting purge_and_repost_controls, purge_channel_ids: {purge_channel_ids}", category="purge_and_repost_controls")
+	log_message(f"Starting purge_and_repost_controls, purge_channel_ids: {purge_channel_ids}", category="purge_and_repost_controls")
 	for channel_id in purge_channel_ids:
-		log_message(f" purge_and_repost_controlsProcessing channel ID: {channel_id}", category="purge_and_repost_controls")
 		channel = bot.get_channel(channel_id)
 		if not channel:
-			log_message(f" purge_and_repost_controlsChannel with ID {channel_id} not found.", category="purge_and_repost_controls")
+			log_message(f"Channel with ID {channel_id} not found.", category="purge_and_repost_controls")
 			continue
 
 		existing_message = None

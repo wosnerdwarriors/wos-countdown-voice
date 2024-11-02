@@ -119,6 +119,7 @@ def user_has_permission(member: discord.Member):
 	return False
 
 # Helper function to post control buttons in a channel
+# Helper function to post control buttons in a channel
 async def post_controls_helper(channel, existing_message=None):
 	log_message(f"post_controls_helper called for channel: {channel}", category="post_controls_helper")
 	sound_files = [f[:-4] for f in os.listdir('sound-clips') if f.endswith('.mp3')]
@@ -140,7 +141,8 @@ async def post_controls_helper(channel, existing_message=None):
 		if interaction.user.voice:
 			vc_channel = interaction.user.voice.channel
 			log_message(f"Attempting to join the voice channel {vc_channel}", category="join_callback")
-			await vc_channel.connect()
+			voice_client = await vc_channel.connect()
+			log_message("Successfully connected to the voice channel.", category="join_callback")
 			await interaction.response.defer()
 		else:
 			await interaction.response.send_message("You're not connected to a voice channel.", ephemeral=True)
@@ -148,7 +150,7 @@ async def post_controls_helper(channel, existing_message=None):
 
 	async def leave_callback(interaction: discord.Interaction):
 		log_message("leave_callback called", category="leave_callback")
-		voice_client = interaction.guild.voice_client
+		voice_client = discord.utils.get(bot.voice_clients, guild=interaction.guild)
 		if voice_client:
 			log_message(f"Leaving the voice channel {voice_client.channel}", category="leave_callback")
 			await voice_client.disconnect()
@@ -159,7 +161,7 @@ async def post_controls_helper(channel, existing_message=None):
 
 	async def stop_callback(interaction: discord.Interaction):
 		log_message("stop_callback called", category="stop_callback")
-		voice_client = interaction.guild.voice_client
+		voice_client = discord.utils.get(bot.voice_clients, guild=interaction.guild)
 		if voice_client and voice_client.is_playing():
 			log_message("Stopping the current sound.", category="stop_callback")
 			voice_client.stop()
@@ -185,7 +187,26 @@ async def post_controls_helper(channel, existing_message=None):
 				await interaction.response.send_message("You don't have permission to play this sound.", ephemeral=True)
 				log_message(f"User {interaction.user.display_name} does not have permission to play {sound}.", category="button_callback")
 				return
-			await play_sound(sound)
+
+			voice_client = discord.utils.get(bot.voice_clients, guild=interaction.guild)
+			if not voice_client:
+				await interaction.response.send_message("Bot is not connected to a voice channel. Please use the 'Join' button first.", ephemeral=True)
+				log_message("Attempt to play sound failed: Bot is not connected to a voice channel.", severity="warning", category="button_callback")
+				return
+
+			sound_path = f'sound-clips/{sound}.mp3'
+			if not os.path.isfile(sound_path):
+				log_message(f"Sound '{sound}' not found.", severity="error", category="button_callback")
+				await interaction.response.send_message(f"Sound '{sound}' not found.", ephemeral=True)
+				return
+
+			if voice_client.is_playing():
+				voice_client.stop()
+				log_message("Stopped the currently playing sound.", category="button_callback")
+
+			audio_source = discord.FFmpegPCMAudio(sound_path)
+			voice_client.play(audio_source)
+			log_message(f"Playing {sound}.mp3", category="button_callback")
 			await interaction.response.defer()
 
 		button.callback = button_callback
@@ -197,6 +218,7 @@ async def post_controls_helper(channel, existing_message=None):
 	else:
 		await channel.send("Controls for wos countdown:", view=view)
 		log_message(f"Posted new control message in channel {channel}.", category="post_controls_helper")
+
 
 # Helper function to play sound
 async def play_sound(sound: str):

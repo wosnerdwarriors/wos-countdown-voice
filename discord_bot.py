@@ -80,18 +80,10 @@ class MyBot(commands.Bot):
 	async def setup_hook(self):
 		log_message("setup_hook called", category="setup_hook")
 		try:
-			# Check if the command is already registered
-			if "postcontrols" not in self.all_commands:
-				self.add_command(post_controls)
-				log_message("postcontrols command registered.", category="setup_hook")
-			else:
-				log_message("postcontrols command already exists, skipping registration.", category="setup_hook")
-
 			await self.sync_commands()
 		except Exception as e:
 			log_message(f"Error during command sync: {str(e)}", severity="error", category="setup_hook")
 			logger.exception("Error during command sync.")
-
 
 	async def sync_commands(self):
 		log_message("Attempting to sync commands with Discord...", "debug", category="sync_commands")
@@ -104,12 +96,13 @@ class MyBot(commands.Bot):
 
 bot = MyBot()
 
-# Command to post control buttons
-@bot.command(name="postcontrols")
-async def post_controls(ctx):
-	"""Command to post the control buttons in the current channel."""
-	log_message(f"Received /postcontrols command from user {ctx.author.display_name} in channel {ctx.channel.name}", category="post_controls")
-	await post_controls_helper(ctx.channel)
+# Slash command to post control buttons
+@bot.tree.command(name="postcontrols", description="Post the control buttons in the current channel")
+async def post_controls(interaction: discord.Interaction):
+	"""Slash command to post the control buttons in the current channel."""
+	log_message(f"Received /postcontrols command from user {interaction.user.display_name} in channel {interaction.channel.name}", category="post_controls")
+	await post_controls_helper(interaction.channel)
+	await interaction.response.send_message("Control buttons posted successfully.", ephemeral=True)
 	log_message("Control buttons posted successfully.", category="post_controls")
 
 # Helper function to check user permissions

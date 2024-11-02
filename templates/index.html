@@ -142,7 +142,6 @@
             if (channels.error) {
                 displayMessage(channels.error, 'danger');
             } else {
-                // Display sound controls with the current serverId
                 displayControls(guildId);
 
                 channels.forEach(channel => {
@@ -166,9 +165,8 @@
 
         async function displayControls(serverId) {
             const controlsContainer = document.getElementById('controls');
-            controlsContainer.innerHTML = ''; // Clear previous controls
+            controlsContainer.innerHTML = '';
 
-            // Create and add leave and stop buttons
             const leaveButton = document.createElement('button');
             leaveButton.className = 'btn btn-danger';
             leaveButton.innerText = 'Leave Voice Channel';
@@ -182,7 +180,6 @@
             controlsContainer.appendChild(leaveButton);
             controlsContainer.appendChild(stopButton);
 
-            // Fetch and add sound play buttons
             const response = await fetch('/api/sounds');
             const sounds = await response.json();
 
@@ -190,7 +187,7 @@
                 const playButton = document.createElement('button');
                 playButton.className = 'btn btn-secondary btn-sound';
                 playButton.innerText = `Play ${sound}`;
-                playButton.onclick = () => playSound(serverId, sound); // Pass the serverId here
+                playButton.onclick = () => playSound(serverId, sound);
                 controlsContainer.appendChild(playButton);
             });
         }
@@ -235,7 +232,7 @@
             const response = await fetch('/api/play', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ guildId: serverId, sound }) // Use only serverId
+                body: JSON.stringify({ guildId: serverId, sound })
             });
             const result = await response.json();
             if (response.ok) {
@@ -304,6 +301,14 @@
                 row.style.display = (category === 'all' || row.classList.contains(`log_category_${category}`)) ? 'table-row' : 'none';
             });
         }
+
+        // Periodically refresh guilds and channels
+        setInterval(() => {
+            loadGuilds();
+            if (selectedGuildId) {
+                loadChannels(selectedGuildId);
+            }
+        }, 10000); // Refresh every 10 seconds
 
         setInterval(fetchLogs, 3000);
 

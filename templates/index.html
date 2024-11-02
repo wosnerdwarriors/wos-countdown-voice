@@ -8,15 +8,19 @@
     <style>
         .tab { cursor: pointer; }
         .tab.active { font-weight: bold; }
-        .guild-tabs, .channels, .controls { margin-top: 20px; }
+        .guild-tabs, .channels, .controls, .logs { margin-top: 20px; }
         .hidden { display: none; }
         .btn-sound { margin-right: 10px; }
+        .log-entry { font-family: monospace; }
+        .log-category { display: none; }
+        .log-category-active { display: table-row; }
+        .table-container { overflow-x: auto; }
     </style>
 </head>
 <body>
-    <div class="container">
+    <div class="container-fluid">
         <h1 class="my-4 text-center">Discord Bot Control</h1>
-        
+
         <!-- Message Box -->
         <div id="messageBox" class="alert alert-info" style="display: none;"></div>
 
@@ -25,14 +29,19 @@
             <button id="showServers" class="btn btn-primary" onclick="showSection('servers')">Servers</button>
             <button id="showLogs" class="btn btn-secondary" onclick="showSection('logs')">Logs</button>
         </div>
-        
+
+        <!-- Category filter buttons -->
+        <div id="logCategoryButtons" class="btn-group mb-3" role="group">
+            <!-- Buttons will be populated dynamically -->
+        </div>
+
         <!-- Servers view -->
         <div id="serversSection" class="section">
             <!-- Guild tabs -->
             <div id="guilds" class="nav nav-tabs guild-tabs">
                 <!-- Guild tabs will be loaded here dynamically -->
             </div>
-            
+
             <!-- Controls for sound and disconnecting -->
             <div id="controls" class="controls">
                 <button class="btn btn-danger" onclick="leaveChannel()">Leave Voice Channel</button>
@@ -41,7 +50,7 @@
                     <!-- Sound buttons will be loaded here dynamically -->
                 </div>
             </div>
-            
+
             <!-- Channels list with join buttons -->
             <div id="channels" class="channels">
                 <div class="alert alert-info">Select a server to see its channels.</div>
@@ -50,9 +59,20 @@
 
         <!-- Logs view -->
         <div id="logsSection" class="section hidden">
-            <!-- Log messages display -->
-            <div id="logs" class="logs">
-                <div class="alert alert-info">Logs will be displayed here.</div>
+            <div class="table-container">
+                <table class="table table-bordered table-hover">
+                    <thead class="thead-dark">
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Severity</th>
+                            <th>Category</th>
+                            <th>Message</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logs">
+                        <!-- Log entries will be dynamically added here -->
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
@@ -64,7 +84,8 @@
     <script>
         let selectedGuildId = null;
         let selectedChannelId = null;
-        let lastLogId = 0;  // Store the last received log ID
+        let lastLogId = 0;
+        let categories = new Set(['all']);
 
         function showSection(section) {
             document.getElementById('serversSection').classList.add('hidden');
@@ -122,11 +143,10 @@
             if (channels.error) {
                 displayMessage(channels.error, 'danger');
             } else {
-                channelsContainer.innerHTML = '';
                 channels.forEach(channel => {
                     const channelRow = document.createElement('div');
                     channelRow.className = 'd-flex justify-content-between align-items-center mb-2';
-                    
+
                     const channelName = document.createElement('span');
                     channelName.innerText = channel.name;
 
@@ -215,33 +235,48 @@
         async function fetchLogs() {
             const response = await fetch(`/api/logs?last_log_id=${lastLogId}`);
             const logs = await response.json();
-
-            // Append new logs and update lastLogId
             const logsContainer = document.getElementById('logs');
+
             Object.values(logs).forEach(log => {
-                const logElement = document.createElement('div');
-                logElement.className = `alert alert-${getLogSeverity(log.severity)}`;
-                logElement.innerText = `${log.timestamp} - ${log.message}`;
-                logsContainer.appendChild(logElement);
+                const logRow = document.createElement('tr');
+                logRow.className = `log-entry log-category log_category_${log.category}`;
+
+                logRow.innerHTML = `
+                    <td>${log.timestamp}</td>
+                    <td>${log.severity}</td>
+                    <td>${log.category}</td>
+                    <td>${log.message}</td>
+                `;
+
+                logsContainer.appendChild(logRow);
+                categories.add(log.category);
                 lastLogId = Math.max(lastLogId, log.id);
+            });
+
+            updateCategoryButtons();
+        }
+
+        function updateCategoryButtons() {
+            const logCategoryButtons = document.getElementById('logCategoryButtons');
+            logCategoryButtons.innerHTML = '';
+
+            categories.forEach(category => {
+                const button = document.createElement('button');
+                button.className = 'btn btn-outline-primary';
+                button.innerText = category === 'all' ? 'All' : category;
+                button.onclick = () => filterLogsByCategory(category);
+                logCategoryButtons.appendChild(button);
             });
         }
 
-        function getLogSeverity(severity) {
-            switch (severity.toLowerCase()) {
-                case 'debug': return 'secondary';
-                case 'info': return 'primary';
-                case 'warning': return 'warning';
-                case 'error': return 'danger';
-                case 'critical': return 'dark';
-                default: return 'light';
-            }
+        function filterLogsByCategory(category) {
+            document.querySelectorAll('.log-entry').forEach(row => {
+                row.style.display = (category === 'all' || row.classList.contains(`log_category_${category}`)) ? 'table-row' : 'none';
+            });
         }
 
-        // Fetch logs periodically
         setInterval(fetchLogs, 3000);
 
-        // Initialize on page load
         loadGuilds();
         displayControls();
         showSection('servers');

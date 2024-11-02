@@ -118,99 +118,83 @@ def user_has_permission(member: discord.Member):
 	log_message(f"User {member.display_name} not allowed: no matching roles", category="user_has_permission")
 	return False
 
-# Helper function to post control buttons in a channel
+# Persistent view for control buttons
+class ControlView(View):
+    def __init__(self):
+        super().__init__(timeout=None)  # Set timeout to None for persistence
+
+        # Add persistent Join, Leave, and Stop buttons
+        join_button = Button(label="Join", style=discord.ButtonStyle.success, custom_id="join_button")
+        leave_button = Button(label="Leave", style=discord.ButtonStyle.danger, custom_id="leave_button")
+        stop_button = Button(label="Stop", style=discord.ButtonStyle.danger, custom_id="stop_button")
+
+        join_button.callback = self.join_callback
+        leave_button.callback = self.leave_callback
+        stop_button.callback = self.stop_callback
+
+        self.add_item(join_button)
+        self.add_item(leave_button)
+        self.add_item(stop_button)
+
+        # Add buttons for each sound file
+        sound_files = [f[:-4] for f in os.listdir('sound-clips') if f.endswith('.mp3')]
+        for sound in sound_files:
+            button = Button(label=sound, style=discord.ButtonStyle.primary, custom_id=f"sound_{sound}")
+            button.callback = lambda interaction, sound=sound: self.play_sound_callback(interaction, sound)
+            self.add_item(button)
+
+    async def join_callback(self, interaction: discord.Interaction):
+        log_message("join_callback called", category="join_callback")
+        if interaction.user.voice:
+            vc_channel = interaction.user.voice.channel
+            log_message(f"Attempting to join the voice channel {vc_channel}", category="join_callback")
+            await vc_channel.connect()
+            log_message("Successfully connected to the voice channel.", category="join_callback")
+            await interaction.response.defer()
+        else:
+            await interaction.response.send_message("You're not connected to a voice channel.", ephemeral=True)
+            log_message("User not connected to a voice channel.", category="join_callback")
+
+    async def leave_callback(self, interaction: discord.Interaction):
+        log_message("leave_callback called", category="leave_callback")
+        voice_client = discord.utils.get(bot.voice_clients, guild=interaction.guild)
+        if voice_client:
+            log_message(f"Leaving the voice channel {voice_client.channel}", category="leave_callback")
+            await voice_client.disconnect()
+            await interaction.response.defer()
+        else:
+            await interaction.response.send_message("I'm not connected to a voice channel.", ephemeral=True)
+            log_message("No voice channel to leave.", category="leave_callback")
+
+    async def stop_callback(self, interaction: discord.Interaction):
+        log_message("stop_callback called", category="stop_callback")
+        await stop_sound(interaction.guild)
+        await interaction.response.send_message("Stopped the current sound.", ephemeral=True)
+
+    async def play_sound_callback(self, interaction: discord.Interaction, sound: str):
+        log_message(f"play_sound_callback called for sound: {sound}", category="play_sound_callback")
+        if not user_has_permission(interaction.user):
+            await interaction.response.send_message("You don't have permission to play this sound.", ephemeral=True)
+            log_message(f"User {interaction.user.display_name} does not have permission to play {sound}.", category="play_sound_callback")
+            return
+
+        await play_sound(sound, interaction.guild)
+        await interaction.response.defer()
+
+# Register the view with the bot
+@bot.event
+async def on_ready():
+    log_message(f"{bot.user} has connected to Discord.", category="on_ready")
+    bot.add_view(ControlView())  # Register the ControlView for persistence
+    await cleanup_orphaned_voice_connections()
+    await sync_voice_connections()
+    await purge_and_repost_controls()
+
+
 # Helper function to post control buttons in a channel
 async def post_controls_helper(channel, existing_message=None):
 	log_message(f"post_controls_helper called for channel: {channel}", category="post_controls_helper")
-	sound_files = [f[:-4] for f in os.listdir('sound-clips') if f.endswith('.mp3')]
-
-	if not sound_files:
-		await channel.send("No sound files found in the 'sound-clips' directory.")
-		log_message("No sound files found to post controls.", category="post_controls_helper")
-		return
-
-	view = View()
-
-	# Add Join, Leave, and Stop buttons
-	join_button = Button(label="Join", style=discord.ButtonStyle.success)
-	leave_button = Button(label="Leave", style=discord.ButtonStyle.danger)
-	stop_button = Button(label="Stop", style=discord.ButtonStyle.danger)
-
-	async def join_callback(interaction: discord.Interaction):
-		log_message("join_callback called", category="join_callback")
-		if interaction.user.voice:
-			vc_channel = interaction.user.voice.channel
-			log_message(f"Attempting to join the voice channel {vc_channel}", category="join_callback")
-			voice_client = await vc_channel.connect()
-			log_message("Successfully connected to the voice channel.", category="join_callback")
-			await interaction.response.defer()
-		else:
-			await interaction.response.send_message("You're not connected to a voice channel.", ephemeral=True)
-			log_message("User not connected to a voice channel.", category="join_callback")
-
-	async def leave_callback(interaction: discord.Interaction):
-		log_message("leave_callback called", category="leave_callback")
-		voice_client = discord.utils.get(bot.voice_clients, guild=interaction.guild)
-		if voice_client:
-			log_message(f"Leaving the voice channel {voice_client.channel}", category="leave_callback")
-			await voice_client.disconnect()
-			await interaction.response.defer()
-		else:
-			await interaction.response.send_message("I'm not connected to a voice channel.", ephemeral=True)
-			log_message("No voice channel to leave.", category="leave_callback")
-
-	async def stop_callback(interaction: discord.Interaction):
-		log_message("stop_callback called", category="stop_callback")
-		voice_client = discord.utils.get(bot.voice_clients, guild=interaction.guild)
-		if voice_client and voice_client.is_playing():
-			log_message("Stopping the current sound.", category="stop_callback")
-			voice_client.stop()
-			await interaction.response.send_message("Stopped the current sound.", ephemeral=True)
-		else:
-			await interaction.response.send_message("No sound is currently playing.", ephemeral=True)
-			log_message("No sound to stop.", category="stop_callback")
-
-	join_button.callback = join_callback
-	leave_button.callback = leave_callback
-	stop_button.callback = stop_callback
-	view.add_item(join_button)
-	view.add_item(leave_button)
-	view.add_item(stop_button)
-
-	# Add buttons for each sound file
-	for sound in sound_files:
-		button = Button(label=sound, style=discord.ButtonStyle.primary)
-
-		async def button_callback(interaction: discord.Interaction, sound=sound):
-			log_message(f"Button pressed to play sound: {sound}", category="button_callback")
-			if not user_has_permission(interaction.user):
-				await interaction.response.send_message("You don't have permission to play this sound.", ephemeral=True)
-				log_message(f"User {interaction.user.display_name} does not have permission to play {sound}.", category="button_callback")
-				return
-
-			voice_client = discord.utils.get(bot.voice_clients, guild=interaction.guild)
-			if not voice_client:
-				await interaction.response.send_message("Bot is not connected to a voice channel. Please use the 'Join' button first.", ephemeral=True)
-				log_message("Attempt to play sound failed: Bot is not connected to a voice channel.", severity="warning", category="button_callback")
-				return
-
-			sound_path = f'sound-clips/{sound}.mp3'
-			if not os.path.isfile(sound_path):
-				log_message(f"Sound '{sound}' not found.", severity="error", category="button_callback")
-				await interaction.response.send_message(f"Sound '{sound}' not found.", ephemeral=True)
-				return
-
-			if voice_client.is_playing():
-				voice_client.stop()
-				log_message("Stopped the currently playing sound.", category="button_callback")
-
-			audio_source = discord.FFmpegPCMAudio(sound_path)
-			voice_client.play(audio_source)
-			log_message(f"Playing {sound}.mp3", category="button_callback")
-			await interaction.response.defer()
-
-		button.callback = button_callback
-		view.add_item(button)
+	view = ControlView()
 
 	if existing_message:
 		await existing_message.edit(content="Click a button to play a sound:", view=view)
@@ -219,12 +203,10 @@ async def post_controls_helper(channel, existing_message=None):
 		await channel.send("Controls for wos countdown:", view=view)
 		log_message(f"Posted new control message in channel {channel}.", category="post_controls_helper")
 
-
-# Helper function to play sound
-async def play_sound(sound: str):
+# Function to play sound
+async def play_sound(sound: str, guild: discord.Guild):
 	log_message(f"play_sound called with sound: {sound}", category="play_sound")
-	guild = bot.guilds[0] if bot.guilds else None
-	voice_client = guild.voice_client if guild else None
+	voice_client = discord.utils.get(bot.voice_clients, guild=guild)
 	if not voice_client:
 		log_message("Bot is not connected to a voice channel.", severity="warning", category="play_sound")
 		return
@@ -236,31 +218,61 @@ async def play_sound(sound: str):
 
 	if voice_client.is_playing():
 		voice_client.stop()
-		log_message(f"Stopped the currently playing sound.", category="play_sound")
+		log_message("Stopped the currently playing sound.", category="play_sound")
 
 	audio_source = discord.FFmpegPCMAudio(sound_path)
 	voice_client.play(audio_source)
 	log_message(f"Playing {sound}.mp3", category="play_sound")
 
+# Function to stop sound
+async def stop_sound(guild: discord.Guild):
+	log_message("stop_sound called", category="stop_sound")
+	voice_client = discord.utils.get(bot.voice_clients, guild=guild)
+	if voice_client and voice_client.is_playing():
+		voice_client.stop()
+		log_message("Sound stopped successfully.", category="stop_sound")
+	else:
+		log_message("No sound is currently playing.", category="stop_sound")
+
+# Function to synchronize existing voice connections
 async def sync_voice_connections():
+	log_message(f"sync_voice_connections being called")
 	log_message("Synchronizing existing voice connections...", category="sync_voice_connections")
 	for guild in bot.guilds:
-		if guild.voice_client:
-			log_message(f"Bot is already connected to a voice channel in guild: {guild.name} (ID: {guild.id})", category="sync_voice_connections")
+		voice_client = discord.utils.get(bot.voice_clients, guild=guild)
+		if voice_client:
+			log_message(f"sync_voice_connections Bot is already connected to a voice channel in guild: {guild.name} (ID: {guild.id})", category="sync_voice_connections")
 		else:
-			log_message(f"Bot is not connected to any voice channel in guild: {guild.name} (ID: {guild.id})", category="sync_voice_connections")
+			log_message(f" sync_voice_connections Bot is not connected to any voice channel in guild: {guild.name} (ID: {guild.id})", category="sync_voice_connections")
+
+# Function to clean up any orphaned voice connections
+async def cleanup_orphaned_voice_connections():
+	log_message("Running cleanup for orphaned voice connections...", category="cleanup_orphaned_voice_connections")
+	for guild in bot.guilds:
+		voice_client = discord.utils.get(bot.voice_clients, guild=guild)
+		if not voice_client and guild.voice_client:
+			try:
+				log_message(f"Detected an orphaned voice connection in guild: {guild.name} (ID: {guild.id}). Attempting to disconnect.", category="cleanup_orphaned_voice_connections")
+				await guild.voice_client.disconnect(force=True)
+				log_message(f"Successfully disconnected from an orphaned voice channel in guild: {guild.name} (ID: {guild.id})", category="cleanup_orphaned_voice_connections")
+			except Exception as e:
+				log_message(f"Failed to disconnect from orphaned voice channel in guild: {guild.name} (ID: {guild.id}): {str(e)}", severity="error", category="cleanup_orphaned_voice_connections")
 
 @bot.event
 async def on_ready():
-	log_message(f"{bot.user} has connected to Discord.", category="on_ready")
-	await sync_voice_connections()
-	await purge_and_repost_controls()
+    log_message(f"{bot.user} has connected to Discord.", category="on_ready")
+    bot.add_view(ControlView())  # Register the ControlView for persistence
+    await cleanup_orphaned_voice_connections()
+    await sync_voice_connections()
+    await purge_and_repost_controls()
 
+ 
 @bot.event
 async def on_guild_join(guild):
 	log_message(f"Joined new guild: {guild.name} (ID: {guild.id}). Syncing commands...", category="on_guild_join")
 	await bot.sync_commands()
 
+# Function to purge and repost control buttons
 async def purge_and_repost_controls():
 	log_message(f"Starting purge_and_repost_controls, purge_channel_ids: {purge_channel_ids}", category="purge_and_repost_controls")
 	for channel_id in purge_channel_ids:

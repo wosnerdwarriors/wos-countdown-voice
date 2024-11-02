@@ -4,8 +4,16 @@ import logging
 import asyncio
 from discord_bot import bot, play_sound, global_logs, log_message
 import discord
+import json
 
 logger = logging.getLogger(__name__)
+
+# Load configuration from config.json
+with open("config.json", "r") as config_file:
+    config = json.load(config_file)
+
+# Get the web server port from the configuration, with a default fallback
+webserver_port = config.get("webserver-port", 5544)
 
 app = Quart(__name__)
 app.config['DEBUG'] = True
@@ -104,5 +112,4 @@ async def get_all_logs():
 
 
 async def main_web():
-	await app.run_task(port=5544)
-
+    await app.run_task(port=webserver_port)

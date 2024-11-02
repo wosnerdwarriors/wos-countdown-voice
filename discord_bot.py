@@ -136,8 +136,8 @@ class ControlView(View):
         self.add_item(leave_button)
         self.add_item(stop_button)
 
-        # Add buttons for each sound file
-        sound_files = [f[:-4] for f in os.listdir('sound-clips') if f.endswith('.mp3')]
+        # Add buttons for each sound file, sorted alphabetically
+        sound_files = sorted([f[:-4] for f in os.listdir('sound-clips') if f.endswith('.mp3')])
         for sound in sound_files:
             button = Button(label=sound, style=discord.ButtonStyle.primary, custom_id=f"sound_{sound}")
             button.callback = lambda interaction, sound=sound: self.play_sound_callback(interaction, sound)

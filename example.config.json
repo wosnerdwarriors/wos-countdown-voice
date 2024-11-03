@@ -1,0 +1,10 @@
+{
+    "token": "your-discord-token-here",
+    "webserver-port": 5544,
+    "roles-allowed-to-control-bot": ["countdown-controller", "Admin"],
+    "debug": true ,
+    "log-messages-to-keep": 0, 
+    "log-messages-to-keep_comment": "for log-messages-to-keep, 0 is infinite, any number over 0 is taken literally. this is not a config option, just a comment",
+    "webserver": true,
+    "purge-and-repost-on-channel-ids": [1234,4321]
+}

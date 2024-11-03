@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Discord Bot Control</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .tab { cursor: pointer; }
+        .tab.active { font-weight: bold; }
+        .guild-tabs, .channels, .controls, .logs { margin-top: 20px; }
+        .hidden { display: none; }
+        .btn-sound { margin-right: 10px; }
+        .log-entry { font-family: monospace; }
+        .log-category { display: none; }
+        .log-category-active { display: table-row; }
+        .table-container { overflow-x: auto; }
+        .btn.active-category { background-color: green; color: white; }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <h1 class="my-4 text-center">Discord Bot Control</h1>
+
+        <!-- Message Box -->
+        <div id="messageBox" class="alert alert-info" style="display: none;"></div>
+
+        <!-- Buttons to switch between Servers and Logs -->
+        <div class="btn-group mb-3" role="group">
+            <button id="showServers" class="btn btn-primary" onclick="showSection('servers')">Servers</button>
+            <button id="showLogs" class="btn btn-secondary" onclick="showSection('logs')">Logs</button>
+        </div>
+
+        <!-- Category filter buttons -->
+        <div id="logCategoryButtons" class="btn-group mb-3" role="group" style="display: none;">
+            <!-- Buttons will be populated dynamically -->
+        </div>
+
+        <!-- Servers view -->
+        <div id="serversSection" class="section">
+            <!-- Guild tabs -->
+            <div id="guilds" class="nav nav-tabs guild-tabs">
+                <!-- Guild tabs will be loaded here dynamically -->
+            </div>
+
+            <!-- Controls for sound and disconnecting -->
+            <div id="controls" class="controls mt-4">
+                <!-- Controls will be loaded dynamically when a server is selected -->
+            </div>
+
+            <!-- Channels list with join buttons -->
+            <div id="channels" class="channels mt-4">
+                <div class="alert alert-info">Select a server to see its channels.</div>
+            </div>
+        </div>
+
+        <!-- Logs view -->
+        <div id="logsSection" class="section hidden">
+            <div class="table-container">
+                <table class="table table-bordered table-hover">
+                    <thead class="thead-dark">
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Severity</th>
+                            <th>Category</th>
+                            <th>Message</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logs">
+                        <!-- Log entries will be dynamically added here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS, Popper.js, and jQuery -->
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.2/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+    <script>
+        let selectedGuildId = null;
+        let selectedChannelId = null;
+        let lastLogId = 0;
+        let categories = new Set(['all']);
+
+        function showSection(section) {
+            document.getElementById('serversSection').classList.add('hidden');
+            document.getElementById('logsSection').classList.add('hidden');
+            document.getElementById('showServers').classList.remove('btn-primary');
+            document.getElementById('showLogs').classList.remove('btn-primary');
+            document.getElementById('showServers').classList.add('btn-secondary');
+            document.getElementById('showLogs').classList.add('btn-secondary');
+            document.getElementById('logCategoryButtons').style.display = 'none'; // Hide log category buttons by default
+
+            if (section === 'servers') {
+                document.getElementById('serversSection').classList.remove('hidden');
+                document.getElementById('showServers').classList.add('btn-primary');
+            } else if (section === 'logs') {
+                document.getElementById('logsSection').classList.remove('hidden');
+                document.getElementById('showLogs').classList.add('btn-primary');
+                document.getElementById('logCategoryButtons').style.display = 'block'; // Show log category buttons when logs are active
+            }
+        }
+
+        function displayMessage(message, type = 'info') {
+            const messageBox = document.getElementById('messageBox');
+            messageBox.innerText = message;
+            messageBox.className = `alert alert-${type}`;
+            messageBox.style.display = 'block';
+            setTimeout(() => {
+                messageBox.style.display = 'none';
+            }, 5000);
+        }
+
+        async function loadGuilds() {
+            const response = await fetch('/api/guilds');
+            const guilds = await response.json();
+            const guildsContainer = document.getElementById('guilds');
+            guildsContainer.innerHTML = '';
+
+            guilds.forEach(guild => {
+                const guildTab = document.createElement('a');
+                guildTab.className = 'nav-item nav-link tab';
+                guildTab.innerText = guild.name;
+                guildTab.onclick = () => {
+                    document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+                    guildTab.classList.add('active');
+                    selectedGuildId = guild.id;
+                    loadChannels(guild.id);
+                };
+                guildsContainer.appendChild(guildTab);
+            });
+        }
+
+        async function loadChannels(guildId) {
+            const response = await fetch(`/api/channels/${guildId}`);
+            const channels = await response.json();
+            const channelsContainer = document.getElementById('channels');
+            channelsContainer.innerHTML = '';
+
+            if (channels.error) {
+                displayMessage(channels.error, 'danger');
+            } else {
+                displayControls(guildId);
+
+                channels.forEach(channel => {
+                    const channelRow = document.createElement('div');
+                    channelRow.className = 'd-flex justify-content-between align-items-center mb-2';
+
+                    const channelName = document.createElement('span');
+                    channelName.innerText = channel.name;
+
+                    const joinButton = document.createElement('button');
+                    joinButton.className = 'btn btn-primary ml-2';
+                    joinButton.innerText = 'Join Channel';
+                    joinButton.onclick = () => joinChannel(guildId, channel.id);
+
+                    channelRow.appendChild(channelName);
+                    channelRow.appendChild(joinButton);
+                    channelsContainer.appendChild(channelRow);
+                });
+            }
+        }
+
+        async function displayControls(serverId) {
+            const controlsContainer = document.getElementById('controls');
+            controlsContainer.innerHTML = '';
+
+            const leaveButton = document.createElement('button');
+            leaveButton.className = 'btn btn-danger';
+            leaveButton.innerText = 'Leave Voice Channel';
+            leaveButton.onclick = () => leaveChannel();
+
+            const stopButton = document.createElement('button');
+            stopButton.className = 'btn btn-secondary';
+            stopButton.innerText = 'Stop Playing';
+            stopButton.onclick = () => stopPlaying();
+
+            controlsContainer.appendChild(leaveButton);
+            controlsContainer.appendChild(stopButton);
+
+            const response = await fetch('/api/sounds');
+            const sounds = await response.json();
+
+            sounds.forEach(sound => {
+                const playButton = document.createElement('button');
+                playButton.className = 'btn btn-secondary btn-sound';
+                playButton.innerText = `Play ${sound}`;
+                playButton.onclick = () => playSound(serverId, sound);
+                controlsContainer.appendChild(playButton);
+            });
+        }
+
+        async function joinChannel(guildId, channelId) {
+            const response = await fetch('/api/join', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ guildId, channelId })
+            });
+            const result = await response.json();
+            if (response.ok) {
+                selectedChannelId = channelId;
+                displayMessage(result.message, 'success');
+            } else {
+                displayMessage(result.error || 'Failed to join the channel', 'danger');
+            }
+        }
+
+        async function leaveChannel() {
+            const response = await fetch('/api/leave', { method: 'POST' });
+            const result = await response.json();
+            if (response.ok) {
+                selectedChannelId = null;
+                displayMessage(result.message, 'success');
+            } else {
+                displayMessage(result.error || 'Failed to leave the channel', 'danger');
+            }
+        }
+
+        async function stopPlaying() {
+            const response = await fetch('/api/stop', { method: 'POST' });
+            const result = await response.json();
+            if (response.ok) {
+                displayMessage(result.message, 'success');
+            } else {
+                displayMessage(result.error || 'Failed to stop playing', 'danger');
+            }
+        }
+
+        async function playSound(serverId, sound) {
+            const response = await fetch('/api/play', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ guildId: serverId, sound })
+            });
+            const result = await response.json();
+            if (response.ok) {
+                displayMessage(result.message, 'success');
+            } else {
+                displayMessage(result.error || 'Failed to play the sound', 'danger');
+            }
+        }
+
+        async function fetchLogs() {
+            const response = await fetch(`/api/logs?last_log_id=${lastLogId}`);
+            const logs = await response.json();
+            const logsContainer = document.getElementById('logs');
+            let newLogsAdded = false;
+
+            Object.values(logs).forEach(log => {
+                const logRow = document.createElement('tr');
+                logRow.className = `log-entry log-category log_category_${log.category}`;
+
+                logRow.innerHTML = `
+                    <td>${log.timestamp}</td>
+                    <td>${log.severity}</td>
+                    <td>${log.category}</td>
+                    <td>${log.message}</td>
+                `;
+
+                logsContainer.appendChild(logRow);
+                categories.add(log.category);
+                lastLogId = Math.max(lastLogId, log.id);
+                newLogsAdded = true;
+            });
+
+            if (newLogsAdded) {
+                updateCategoryButtons();
+                const activeButton = document.querySelector('#logCategoryButtons .btn.active-category');
+                const activeCategory = activeButton ? activeButton.innerText.toLowerCase() : 'all';
+                filterLogsByCategory(activeCategory);
+            }
+        }
+
+        function updateCategoryButtons() {
+            const logCategoryButtons = document.getElementById('logCategoryButtons');
+            logCategoryButtons.innerHTML = '';
+
+            categories.forEach(category => {
+                const button = document.createElement('button');
+                button.className = 'btn btn-outline-primary';
+                button.innerText = category === 'all' ? 'All' : category;
+                button.onclick = () => {
+                    filterLogsByCategory(category);
+                    highlightActiveButton(button);
+                };
+                logCategoryButtons.appendChild(button);
+            });
+        }
+
+        function highlightActiveButton(activeButton) {
+            document.querySelectorAll('#logCategoryButtons .btn').forEach(button => {
+                button.classList.remove('active-category');
+            });
+            activeButton.classList.add('active-category');
+        }
+
+        function filterLogsByCategory(category) {
+            document.querySelectorAll('.log-entry').forEach(row => {
+                row.style.display = (category === 'all' || row.classList.contains(`log_category_${category}`)) ? 'table-row' : 'none';
+            });
+        }
+
+        // Periodically refresh guilds and channels
+        setInterval(() => {
+            loadGuilds();
+            if (selectedGuildId) {
+                loadChannels(selectedGuildId);
+            }
+        }, 10000); // Refresh every 10 seconds
+
+        setInterval(fetchLogs, 3000);
+
+        loadGuilds();
+        showSection('servers');
+    </script>
+</body>
+</html>

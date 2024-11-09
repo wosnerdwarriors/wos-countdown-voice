@@ -56,6 +56,9 @@ Post the controls in a channel
 ```
 If you don't have this option, try restarting discord.
 
+# Known Issues
+* when CPU is lacking, the counting may go out of sync. Consider running on a dedicated server
+
 # Bugs?
 This was very recently written and hasn't had extensive testing so expect there may be some issues. 
 Please ping deathmarcher on our discord server which you can find a link to on https://wosnerds.com/

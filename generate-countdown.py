@@ -2,13 +2,14 @@
 
 import argparse
 from gtts import gTTS
+from gtts.lang import tts_langs
 from pydub import AudioSegment
 import os
 
 # Configuration options
 debug = False  # Enable debug mode to print additional information
 
-def generate_countdown(start_num, end_num, output_file):
+def generate_countdown(start_num, end_num, output_file, language):
 	countdown_audio = AudioSegment.silent(duration=0)  # Initialize empty audio segment
 	durations = []
 
@@ -19,8 +20,8 @@ def generate_countdown(start_num, end_num, output_file):
 
 	# Step 1: Generate speech for each number and measure its duration
 	for i in range(start_num, end_num - 1, -1):
-		if debug: print(f"Generating speech for number {i}")
-		tts = gTTS(text=str(i), lang='en')
+		if debug: print(f"Generating speech for number {i} with language '{language}'")
+		tts = gTTS(text=str(i), lang=language)
 		tmp_file = f"tmp-data/countdown-{start_num}-{end_num}-round1_{i}.mp3"
 		tts.save(tmp_file)  # Save the first-round audio with updated naming convention
 
@@ -62,22 +63,28 @@ def generate_countdown(start_num, end_num, output_file):
 		countdown_audio += number_audio
 
 	# Step 4: Export the final countdown audio to mp3 with proper naming
-	final_output_file = f"countdown-{start_num}-{end_num}.mp3"
-	countdown_audio.export(final_output_file, format="mp3")
-	if debug: print(f"Final countdown saved as {final_output_file}")
+	countdown_audio.export(output_file, format="mp3")
+	print(f"Final countdown saved as {output_file}")
 
 	# Step 5: Cleanup temporary files if debug is False
 	if not debug:
 		for i in range(start_num, end_num - 1, -1):
 			os.remove(f"tmp-data/countdown-{start_num}-{end_num}-round1_{i}.mp3")
 			os.remove(f"tmp-data/countdown-{start_num}-{end_num}-round2_{i}.mp3")
-			if debug: print(f"Temporary files for number {i} deleted")
 
 if __name__ == "__main__":
+	# Fetch supported languages for help text
+	languages = tts_langs()
+	language_help_text = "\nSupported languages:\n" + "\n".join([f"{code}: {name}" for code, name in languages.items()])
+
 	# Parse command-line arguments
-	parser = argparse.ArgumentParser(description="Generate a countdown MP3 with specified start and end numbers.")
+	parser = argparse.ArgumentParser(
+		description="Generate a countdown MP3 with specified start and end numbers.\n" + language_help_text,
+		formatter_class=argparse.RawTextHelpFormatter
+	)
 	parser.add_argument("--start", type=int, required=True, help="The starting number of the countdown.")
 	parser.add_argument("--end", type=int, required=True, help="The ending number of the countdown.")
+	parser.add_argument("--language", type=str, default="en", help="The language for the countdown speech. Default is 'en' (US English).")
 	parser.add_argument("--debug", action="store_true", help="Enable debug mode to print process and keep temp files.")
 	args = parser.parse_args()
 
@@ -86,7 +93,7 @@ if __name__ == "__main__":
 
 	start_num = args.start
 	end_num = args.end
+	language = args.language
 
 	# Generate countdown with provided arguments
-	generate_countdown(start_num, end_num, f"countdown-{start_num}-{end_num}.mp3")
-
+	generate_countdown(start_num, end_num, f"countdown-{language}-{start_num}-{end_num}.mp3", language)

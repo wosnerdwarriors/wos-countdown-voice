@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Discord Bot Control</title>
+    <title>wos countdown</title>
     <!-- Bootstrap CSS -->
     <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
     <style>
@@ -20,7 +20,7 @@
 </head>
 <body>
     <div class="container-fluid">
-        <h1 class="my-4 text-center">Discord Bot Control</h1>
+        <h1 class="my-4 text-center">WOSNerd's countdown discord bot</h1>
 
         <!-- Message Box -->
         <div id="messageBox" class="alert alert-info" style="display: none;"></div>
@@ -142,26 +142,79 @@
             if (channels.error) {
                 displayMessage(channels.error, 'danger');
             } else {
-                displayControls(guildId);
+                // Add control buttons
+                const controlsRow = document.createElement('div');
+                controlsRow.className = 'mb-3';
 
+                const leaveButton = document.createElement('button');
+                leaveButton.className = 'btn btn-danger mr-2';
+                leaveButton.innerText = 'Leave Voice Channel';
+                leaveButton.onclick = () => leaveChannel();
+
+                const stopButton = document.createElement('button');
+                stopButton.className = 'btn btn-secondary mr-2';
+                stopButton.innerText = 'Stop Playing';
+                stopButton.onclick = () => stopPlaying();
+
+                controlsRow.appendChild(leaveButton);
+                controlsRow.appendChild(stopButton);
+
+                // Fetch and add sound play buttons
+                const responseSounds = await fetch('/api/sounds');
+                const sounds = await responseSounds.json();
+                sounds.forEach(sound => {
+                    const playButton = document.createElement('button');
+                    playButton.className = 'btn btn-secondary btn-sound mr-2';
+                    playButton.innerText = `Play ${sound}`;
+                    playButton.onclick = () => playSound(guildId, sound);
+                    controlsRow.appendChild(playButton);
+                });
+
+                channelsContainer.appendChild(controlsRow);
+
+                // Create table for channels
+                const table = document.createElement('table');
+                table.className = 'table table-striped';
+
+                const thead = document.createElement('thead');
+                thead.innerHTML = `
+                    <tr>
+                        <th>Channel Name</th>
+                        <th>Channel ID</th>
+                        <th>Action</th>
+                    </tr>
+                `;
+                table.appendChild(thead);
+
+                const tbody = document.createElement('tbody');
                 channels.forEach(channel => {
-                    const channelRow = document.createElement('div');
-                    channelRow.className = 'd-flex justify-content-between align-items-center mb-2';
+                    const row = document.createElement('tr');
 
-                    const channelName = document.createElement('span');
-                    channelName.innerText = channel.name;
+                    const channelNameCell = document.createElement('td');
+                    channelNameCell.innerText = channel.name;
 
+                    const channelIdCell = document.createElement('td');
+                    channelIdCell.innerText = channel.id;
+
+                    const actionCell = document.createElement('td');
                     const joinButton = document.createElement('button');
-                    joinButton.className = 'btn btn-primary ml-2';
+                    joinButton.className = 'btn btn-primary';
                     joinButton.innerText = 'Join Channel';
                     joinButton.onclick = () => joinChannel(guildId, channel.id);
+                    actionCell.appendChild(joinButton);
 
-                    channelRow.appendChild(channelName);
-                    channelRow.appendChild(joinButton);
-                    channelsContainer.appendChild(channelRow);
+                    row.appendChild(channelNameCell);
+                    row.appendChild(channelIdCell);
+                    row.appendChild(actionCell);
+
+                    tbody.appendChild(row);
                 });
+
+                table.appendChild(tbody);
+                channelsContainer.appendChild(table);
             }
         }
+
 
         async function displayControls(serverId) {
             const controlsContainer = document.getElementById('controls');
@@ -308,7 +361,7 @@
             if (selectedGuildId) {
                 loadChannels(selectedGuildId);
             }
-        }, 10000); // Refresh every 10 seconds
+        }, 2000); // Refresh every 2 seconds
 
         setInterval(fetchLogs, 3000);
 

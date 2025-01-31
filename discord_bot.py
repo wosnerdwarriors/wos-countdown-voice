@@ -6,6 +6,7 @@ from discord.ext import commands
 from discord.ui import Button, View
 import json
 import datetime
+import re
 
 # Load configuration from config.json
 with open("config.json", "r") as config_file:
@@ -34,6 +35,15 @@ intents.message_content = True
 intents.guilds = True
 intents.members = True  # so we can get new roles added/removed
 intents.voice_states = True
+
+def extract_number(filename):
+	"""Extract numerical values from a filename for proper sorting."""
+	match = re.search(r'\d+', filename)
+	return int(match.group()) if match else float('inf')
+
+# Helper function to sort files numerically when they contain numbers
+def sort_sound_files(files):
+	return sorted(files, key=extract_number)
 
 # Helper function to log messages
 def log_message(message, severity="info", category="catchall"):
@@ -127,13 +137,17 @@ def user_has_permission(member: discord.Member):
 			return True
 	log_message(f"User {member.display_name} not allowed: no matching roles", category="user_has_permission")
 	return False
+posted_messages = {}
 
 # Persistent view for control buttons
 class ControlView(View):
-	def __init__(self):
-		super().__init__(timeout=None)  # Set timeout to None for persistence
+	def __init__(self, sound_files):
+		super().__init__(timeout=None)
+	 
+		# Sort sound files numerically
+		sorted_sounds = sort_sound_files(sound_files)
 
-		# Add persistent Join, Leave, and Stop buttons
+		# Add control buttons (Join, Leave, Stop)
 		join_button = Button(label="Join", style=discord.ButtonStyle.success, custom_id="join_button")
 		leave_button = Button(label="Leave", style=discord.ButtonStyle.danger, custom_id="leave_button")
 		stop_button = Button(label="Stop", style=discord.ButtonStyle.danger, custom_id="stop_button")
@@ -146,12 +160,12 @@ class ControlView(View):
 		self.add_item(leave_button)
 		self.add_item(stop_button)
 
-		# Add buttons for each sound file, sorted alphabetically
-		sound_files = sorted([f[:-4] for f in os.listdir('sound-clips') if f.endswith('.mp3')])
-		for sound in sound_files:
+		# Limit to 22 sound buttons per message (since 3 control buttons are already used)
+		for sound in sorted_sounds[:22]:
 			button = Button(label=sound, style=discord.ButtonStyle.primary, custom_id=f"sound_{sound}")
-			button.callback = lambda interaction, sound=sound: self.play_sound_callback(interaction, sound)
+			button.callback = lambda interaction, s=sound: self.play_sound_callback(interaction, s)
 			self.add_item(button)
+
 
 	async def join_callback(self, interaction: discord.Interaction):
 		log_message("join_callback called", category="join_callback")
@@ -202,16 +216,36 @@ async def on_ready():
 
 
 # Helper function to post control buttons in a channel
-async def post_controls_helper(channel, existing_message=None):
-	log_message(f"post_controls_helper called for channel: {channel}", category="post_controls_helper")
-	view = ControlView()
+async def post_controls_helper(channel):
+	log_message(f"Posting controls to {channel}", "info", "post_controls")
+	
+	# Get all sound file names (without .mp3)
+	sound_files = sorted([f[:-4] for f in os.listdir('sound-clips') if f.endswith('.mp3')])
+	
+	# Ensure we don't exceed Discord's button limit (max 25 per message)
+	buttons_per_message = 22  # 22 sound buttons + 3 control buttons = 25 total
+	chunks = [sound_files[i:i + buttons_per_message] for i in range(0, len(sound_files), buttons_per_message)]
+	
+	existing_messages = posted_messages.get(channel.id, [])
 
-	if existing_message:
-		await existing_message.edit(content="Click a button to play a sound:", view=view)
-		log_message(f"Edited existing control message {existing_message}.", category="post_controls_helper")
-	else:
-		await channel.send("Controls for wos countdown:", view=view)
-		log_message(f"Posted new control message in channel {channel}.", category="post_controls_helper")
+	for idx, chunk in enumerate(chunks):
+		view = ControlView(chunk)  # Pass only a subset of sound buttons
+		if idx < len(existing_messages):
+			message = await channel.fetch_message(existing_messages[idx])
+			await message.edit(content="Click a button to play a sound:", view=view)
+		else:
+			message = await channel.send("Controls for wos countdown:", view=view)
+			existing_messages.append(message.id)
+
+	# Delete extra old messages if we now have fewer groups
+	for extra_msg_id in existing_messages[len(chunks):]:
+		msg_to_delete = await channel.fetch_message(extra_msg_id)
+		await msg_to_delete.delete()
+
+	posted_messages[channel.id] = existing_messages[:len(chunks)]
+
+
+
 
 # Function to play sound
 async def play_sound(sound: str, guild: discord.Guild):

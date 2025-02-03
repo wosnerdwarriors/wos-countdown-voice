@@ -209,10 +209,17 @@ class ControlView(View):
 @bot.event
 async def on_ready():
 	log_message(f"{bot.user} has connected to Discord.", category="on_ready")
-	bot.add_view(ControlView())  # Register the ControlView for persistence
+
+	# Get sound files from the sound-clips directory
+	sound_files = sorted([f[:-4] for f in os.listdir('sound-clips') if f.endswith('.mp3')])
+
+	# Register the ControlView for persistence
+	bot.add_view(ControlView(sound_files))
+
 	await cleanup_orphaned_voice_connections()
 	await sync_voice_connections()
 	await purge_and_repost_controls()
+
 
 
 # Helper function to post control buttons in a channel

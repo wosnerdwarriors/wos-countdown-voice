@@ -56,18 +56,32 @@ def check_python_modules():
 		for mod in missing_modules:
 			print_safe(f"   - {mod}")
 
+		print_safe("\n⚠️ The script requires these modules to function correctly.")
+
+		# 🔹 Debugging: Ensure we reach the prompt
+		print_safe("\n🔹 DEBUG: About to prompt user for Python module installation...\n")
+		sys.stdout.flush()
+
 		if prompt_for_install("\nWould you like to install the missing Python modules now? (y/n) "):
+			print_safe("\n🔹 DEBUG: User chose to install Python modules.")
 			try:
+				print_safe("\n🔹 Running: pip3 install -r requirements.txt\n")
+				sys.stdout.flush()
+
+				# Run pip3 install in the foreground
 				subprocess.run(["pip3", "install", "-r", REQUIREMENTS_FILE], check=True)
+
 				print_safe("\n✅ Python modules installed successfully. Please restart the script.\n")
 				sys.exit(0)
-			except subprocess.CalledProcessError:
+			except subprocess.CalledProcessError as e:
 				print_safe("\n❌ Failed to install Python modules. Please run manually:\n")
 				print_safe("   pip3 install -r requirements.txt\n")
+				print_safe(f"\n🔹 DEBUG: Install failed with error -> {e}\n")
 				sys.exit(1)
 		else:
 			print_safe("\n⚠️ Skipping Python module installation. The program may not work correctly.\n")
 			sys.exit(1)
+
 
 def check_system_dependencies():
 	"""Check if required system dependencies (like ffmpeg) are installed."""
@@ -97,20 +111,24 @@ def check_system_dependencies():
 
 def prompt_for_install(prompt_text):
 	"""Prompt the user with Y/N to install missing dependencies, with added debugging."""
-	while True:
-		print_safe(f"\n🔹 DEBUG: Displaying prompt -> {prompt_text}")  # Debugging line
-		answer = input(prompt_text).strip().lower()
+	print_safe(f"\n🔹 DEBUG: Reached prompt_for_install with prompt -> {prompt_text}")
+	sys.stdout.flush()  # Ensure output flushes before asking for input
 
+	while True:
+		print_safe("🔹 DEBUG: Waiting for user input... (y/n)")
+		sys.stdout.flush()  # Force output to show immediately
+		answer = input(prompt_text).strip().lower()
 		print_safe(f"🔹 DEBUG: User entered -> '{answer}'")  # Debugging line
 
 		if answer in ["y", "yes"]:
-			print_safe("✅ DEBUG: User confirmed installation.")
+			print_safe("✅ DEBUG: User chose to install dependencies.")
 			return True
 		elif answer in ["n", "no"]:
 			print_safe("🚫 DEBUG: User declined installation.")
 			return False
 		else:
 			print_safe("❌ Invalid input. Please enter 'y' or 'n'.")
+
 
 
 def install_missing_dependencies(missing_deps):

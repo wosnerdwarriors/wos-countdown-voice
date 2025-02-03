@@ -111,19 +111,24 @@ def install_missing_dependencies(missing_deps):
 	for dep in missing_deps:
 		if dep == "ffmpeg":
 			try:
+				print_safe(f"\n📥 Installing {dep} on {os_name}...\n")
+
 				if os_name == "linux":
-					print_safe("📥 Installing FFmpeg on Linux...")
-					subprocess.run(["sudo", "apt", "install", "-y", "ffmpeg"], check=True, text=True)
-
+					cmd = ["sudo", "apt", "install", "-y", "ffmpeg"]
 				elif os_name == "darwin":
-					print_safe("📥 Installing FFmpeg on macOS...")
-					subprocess.run(["brew", "install", "ffmpeg"], check=True, text=True)
-
+					cmd = ["brew", "install", "ffmpeg"]
 				elif os_name == "windows":
-					print_safe("📥 Installing FFmpeg on Windows using winget...\n")
-					subprocess.run(["winget", "install", "-e", "--id", "Gyan.FFmpeg"], check=True, text=True)
+					cmd = ["winget", "install", "-e", "--id", "Gyan.FFmpeg"]
 
-				print_safe("\n✅ FFmpeg installed successfully!")
+				# Run the command and capture output
+				process = subprocess.run(cmd, text=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+				# Print the full stdout and stderr
+				print_safe(f"✅ Installation output:\n{process.stdout}")
+				if process.stderr:
+					print_safe(f"⚠️ Installation warnings:\n{process.stderr}")
+
+				print_safe(f"\n✅ {dep} installed successfully!")
 
 			except subprocess.CalledProcessError as e:
 				print_safe("\n❌ Automatic installation failed. Error details:\n")
@@ -142,6 +147,7 @@ def install_missing_dependencies(missing_deps):
 					print_safe("   winget install -e --id Gyan.FFmpeg\n")
 
 				sys.exit(1)
+
 
 
 async def main():

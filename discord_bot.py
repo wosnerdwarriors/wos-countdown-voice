@@ -143,7 +143,7 @@ posted_messages = {}
 class ControlView(View):
 	def __init__(self, sound_files):
 		super().__init__(timeout=None)
-	 
+
 		# Sort sound files numerically
 		sorted_sounds = sort_sound_files(sound_files)
 
@@ -210,10 +210,10 @@ class ControlView(View):
 async def on_ready():
 	log_message(f"{bot.user} has connected to Discord.", category="on_ready")
 
-	# Get sound files from the sound-clips directory
+	# Get all sound file names (without .mp3)
 	sound_files = sorted([f[:-4] for f in os.listdir('sound-clips') if f.endswith('.mp3')])
 
-	# Register the ControlView for persistence
+	# Register the ControlView with sound files
 	bot.add_view(ControlView(sound_files))
 
 	await cleanup_orphaned_voice_connections()
@@ -223,24 +223,31 @@ async def on_ready():
 
 
 # Helper function to post control buttons in a channel
-async def post_controls_helper(channel):
+async def post_controls_helper(channel, existing_message=None):
 	log_message(f"Posting controls to {channel}", "info", "post_controls")
-	
+
 	# Get all sound file names (without .mp3)
 	sound_files = sorted([f[:-4] for f in os.listdir('sound-clips') if f.endswith('.mp3')])
-	
+
 	# Ensure we don't exceed Discord's button limit (max 25 per message)
 	buttons_per_message = 22  # 22 sound buttons + 3 control buttons = 25 total
 	chunks = [sound_files[i:i + buttons_per_message] for i in range(0, len(sound_files), buttons_per_message)]
-	
+
 	existing_messages = posted_messages.get(channel.id, [])
 
 	for idx, chunk in enumerate(chunks):
 		view = ControlView(chunk)  # Pass only a subset of sound buttons
-		if idx < len(existing_messages):
+
+		if existing_message and idx == 0:
+			# If we have an existing message, update it instead of creating a new one
+			message = await channel.fetch_message(existing_message.id)
+			await message.edit(content="Click a button to play a sound:", view=view)
+		elif idx < len(existing_messages):
+			# Update existing messages if they exist
 			message = await channel.fetch_message(existing_messages[idx])
 			await message.edit(content="Click a button to play a sound:", view=view)
 		else:
+			# Send a new message if there aren't enough existing ones
 			message = await channel.send("Controls for wos countdown:", view=view)
 			existing_messages.append(message.id)
 
@@ -250,6 +257,7 @@ async def post_controls_helper(channel):
 		await msg_to_delete.delete()
 
 	posted_messages[channel.id] = existing_messages[:len(chunks)]
+
 
 
 
@@ -308,15 +316,6 @@ async def cleanup_orphaned_voice_connections():
 				log_message(f"Successfully disconnected from an orphaned voice channel in guild: {guild.name} (ID: {guild.id})", category="cleanup_orphaned_voice_connections")
 			except Exception as e:
 				log_message(f"Failed to disconnect from orphaned voice channel in guild: {guild.name} (ID: {guild.id}): {str(e)}", severity="error", category="cleanup_orphaned_voice_connections")
-
-@bot.event
-async def on_ready():
-	log_message(f"{bot.user} has connected to Discord.", category="on_ready")
-	bot.add_view(ControlView())  # Register the ControlView for persistence
-	await cleanup_orphaned_voice_connections()
-	await sync_voice_connections()
-	await purge_and_repost_controls()
-
 
 @bot.event
 async def on_guild_join(guild):

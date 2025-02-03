@@ -7,9 +7,6 @@ import platform
 import os
 import subprocess
 
-from discord_bot import main_bot
-from web_server import main_web
-
 REQUIREMENTS_FILE = "requirements.txt"
 SYSTEM_DEPENDENCIES = ["ffmpeg"]  # Add more if needed
 
@@ -40,7 +37,7 @@ def get_required_modules():
 	return modules
 
 def check_python_modules():
-	"""Check if required Python modules are installed."""
+	"""Check if required Python modules are installed BEFORE importing anything."""
 	print_safe("\n🔍 Checking required Python modules...\n")
 
 	required_modules = get_required_modules()
@@ -130,9 +127,13 @@ def install_missing_dependencies(missing_deps, os_name):
 				input("\nPress Enter to continue after installation...")
 
 async def main():
-	# Run checks before starting
+	# Run checks before importing other modules
 	check_python_modules()
 	check_system_dependencies()
+
+	# Now we safely import everything
+	from discord_bot import main_bot
+	from web_server import main_web
 
 	# Start bot and web server
 	await asyncio.gather(

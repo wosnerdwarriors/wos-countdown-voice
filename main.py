@@ -112,17 +112,26 @@ def install_missing_dependencies(missing_deps):
 		if dep == "ffmpeg":
 			try:
 				if os_name == "linux":
-					print_safe("Installing FFmpeg on Linux...")
-					subprocess.run(["sudo", "apt", "install", "-y", "ffmpeg"], check=True)
-				elif os_name == "darwin":
-					print_safe("Installing FFmpeg on macOS...")
-					subprocess.run(["brew", "install", "ffmpeg"], check=True)
-				elif os_name == "windows":
-					print_safe("Installing FFmpeg on Windows using winget...\n")
-					subprocess.run(["winget", "install", "-e", "--id", "Gyan.FFmpeg"], check=True)
+					print_safe("📥 Installing FFmpeg on Linux...")
+					subprocess.run(["sudo", "apt", "install", "-y", "ffmpeg"], check=True, text=True)
 
-			except subprocess.CalledProcessError:
-				print_safe("\n❌ Automatic installation failed. Please install manually using the following command:\n")
+				elif os_name == "darwin":
+					print_safe("📥 Installing FFmpeg on macOS...")
+					subprocess.run(["brew", "install", "ffmpeg"], check=True, text=True)
+
+				elif os_name == "windows":
+					print_safe("📥 Installing FFmpeg on Windows using winget...\n")
+					subprocess.run(["winget", "install", "-e", "--id", "Gyan.FFmpeg"], check=True, text=True)
+
+				print_safe("\n✅ FFmpeg installed successfully!")
+
+			except subprocess.CalledProcessError as e:
+				print_safe("\n❌ Automatic installation failed. Error details:\n")
+				print_safe(f"   Command: {e.cmd}")
+				print_safe(f"   Return Code: {e.returncode}")
+				print_safe(f"   Error Output: {e.stderr or 'No additional error output.'}")
+
+				print_safe("\n🔹 Please install FFmpeg manually using one of the following commands:\n")
 				if os_name == "linux":
 					print_safe("   sudo apt install ffmpeg  # For Debian/Ubuntu")
 					print_safe("   sudo dnf install ffmpeg  # For Fedora")
@@ -131,7 +140,9 @@ def install_missing_dependencies(missing_deps):
 					print_safe("   brew install ffmpeg  # For macOS (Homebrew required)")
 				elif os_name == "windows":
 					print_safe("   winget install -e --id Gyan.FFmpeg\n")
+
 				sys.exit(1)
+
 
 async def main():
 	# Run checks before importing other modules

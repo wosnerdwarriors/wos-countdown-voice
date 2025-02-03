@@ -87,6 +87,7 @@ def check_system_dependencies():
 			print_safe(f"   - {dep}")
 
 		if prompt_for_install("\nWould you like to install missing system dependencies now? (y/n) "):
+			print("you said yes so now installing missing dependencies")
 			install_missing_dependencies(missing_deps)
 			print_safe("\n✅ System dependencies installed successfully. Please restart the script.\n")
 			sys.exit(0)

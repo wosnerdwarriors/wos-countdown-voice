@@ -56,10 +56,15 @@ def check_python_modules():
 		for mod in missing_modules:
 			print_safe(f"   - {mod}")
 
-		if prompt_for_install("Would you like to install missing Python modules now? (y/n) "):
-			subprocess.run(["pip3", "install", "-r", REQUIREMENTS_FILE], check=True)
-			print_safe("\n✅ Python modules installed successfully. Please restart the script.\n")
-			sys.exit(0)
+		if prompt_for_install("\nWould you like to install the missing Python modules now? (y/n) "):
+			try:
+				subprocess.run(["pip3", "install", "-r", REQUIREMENTS_FILE], check=True)
+				print_safe("\n✅ Python modules installed successfully. Please restart the script.\n")
+				sys.exit(0)
+			except subprocess.CalledProcessError:
+				print_safe("\n❌ Failed to install Python modules. Please run manually:\n")
+				print_safe("   pip3 install -r requirements.txt\n")
+				sys.exit(1)
 		else:
 			print_safe("\n⚠️ Skipping Python module installation. The program may not work correctly.\n")
 			sys.exit(1)
@@ -81,21 +86,8 @@ def check_system_dependencies():
 		for dep in missing_deps:
 			print_safe(f"   - {dep}")
 
-		# Provide OS-specific installation instructions
-		print_safe("\nTo install missing dependencies, run:")
-		os_name = platform.system().lower()
-		if os_name == "linux":
-			print_safe("   sudo apt install ffmpeg  # For Debian/Ubuntu")
-			print_safe("   sudo dnf install ffmpeg  # For Fedora")
-			print_safe("   sudo pacman -S ffmpeg    # For Arch")
-		elif os_name == "darwin":
-			print_safe("   brew install ffmpeg  # For macOS (Homebrew required)")
-		elif os_name == "windows":
-			print_safe("   Run the following in PowerShell:\n")
-			print_safe("   winget install -e --id Gyan.FFmpeg")
-
 		if prompt_for_install("\nWould you like to install missing system dependencies now? (y/n) "):
-			install_missing_dependencies(missing_deps, os_name)
+			install_missing_dependencies(missing_deps)
 			print_safe("\n✅ System dependencies installed successfully. Please restart the script.\n")
 			sys.exit(0)
 		else:
@@ -113,18 +105,33 @@ def prompt_for_install(prompt_text):
 		else:
 			print_safe("❌ Invalid input. Please enter 'y' or 'n'.")
 
-def install_missing_dependencies(missing_deps, os_name):
+def install_missing_dependencies(missing_deps):
 	"""Attempts to install missing dependencies based on OS."""
+	os_name = platform.system().lower()
 	for dep in missing_deps:
 		if dep == "ffmpeg":
-			if os_name == "linux":
-				subprocess.run(["sudo", "apt", "install", "-y", "ffmpeg"], check=True)
-			elif os_name == "darwin":
-				subprocess.run(["brew", "install", "ffmpeg"], check=True)
-			elif os_name == "windows":
-				print_safe("⚠️ Please install FFmpeg manually by running:")
-				print_safe("   winget install -e --id Gyan.FFmpeg")
-				input("\nPress Enter to continue after installation...")
+			try:
+				if os_name == "linux":
+					print_safe("Installing FFmpeg on Linux...")
+					subprocess.run(["sudo", "apt", "install", "-y", "ffmpeg"], check=True)
+				elif os_name == "darwin":
+					print_safe("Installing FFmpeg on macOS...")
+					subprocess.run(["brew", "install", "ffmpeg"], check=True)
+				elif os_name == "windows":
+					print_safe("Installing FFmpeg on Windows using winget...\n")
+					subprocess.run(["winget", "install", "-e", "--id", "Gyan.FFmpeg"], check=True)
+
+			except subprocess.CalledProcessError:
+				print_safe("\n❌ Automatic installation failed. Please install manually using the following command:\n")
+				if os_name == "linux":
+					print_safe("   sudo apt install ffmpeg  # For Debian/Ubuntu")
+					print_safe("   sudo dnf install ffmpeg  # For Fedora")
+					print_safe("   sudo pacman -S ffmpeg    # For Arch")
+				elif os_name == "darwin":
+					print_safe("   brew install ffmpeg  # For macOS (Homebrew required)")
+				elif os_name == "windows":
+					print_safe("   winget install -e --id Gyan.FFmpeg\n")
+				sys.exit(1)
 
 async def main():
 	# Run checks before importing other modules
@@ -147,4 +154,3 @@ if __name__ == "__main__":
 		sys.stdout.reconfigure(encoding="utf-8")
 
 	asyncio.run(main())
-

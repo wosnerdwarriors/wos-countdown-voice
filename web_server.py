@@ -17,6 +17,7 @@ webserver_port = config.get("webserver-port", 5544)
 
 app = Quart(__name__)
 app.config['DEBUG'] = True
+app.config["PROVIDE_AUTOMATIC_OPTIONS"] = True  # Add this line to prevent the KeyError
 
 @app.route('/')
 async def index():

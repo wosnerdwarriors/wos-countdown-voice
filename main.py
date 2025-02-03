@@ -118,7 +118,8 @@ def install_missing_dependencies(missing_deps):
 				elif os_name == "darwin":
 					cmd = ["brew", "install", "ffmpeg"]
 				elif os_name == "windows":
-					cmd = ["winget", "install", "-e", "--id", "Gyan.FFmpeg"]
+					# Run via PowerShell explicitly
+					cmd = ["powershell", "Start-Process", "winget", "-ArgumentList", "'install -e --id Gyan.FFmpeg'", "-Wait", "-NoNewWindow"]
 
 				# Run the command and capture output
 				process = subprocess.run(cmd, text=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -144,7 +145,7 @@ def install_missing_dependencies(missing_deps):
 				elif os_name == "darwin":
 					print_safe("   brew install ffmpeg  # For macOS (Homebrew required)")
 				elif os_name == "windows":
-					print_safe("   winget install -e --id Gyan.FFmpeg\n")
+					print_safe("   Open PowerShell and run: winget install -e --id Gyan.FFmpeg\n")
 
 				sys.exit(1)
 

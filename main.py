@@ -96,15 +96,22 @@ def check_system_dependencies():
 			sys.exit(1)
 
 def prompt_for_install(prompt_text):
-	"""Prompt the user with Y/N to install missing dependencies."""
+	"""Prompt the user with Y/N to install missing dependencies, with added debugging."""
 	while True:
+		print_safe(f"\n🔹 DEBUG: Displaying prompt -> {prompt_text}")  # Debugging line
 		answer = input(prompt_text).strip().lower()
+
+		print_safe(f"🔹 DEBUG: User entered -> '{answer}'")  # Debugging line
+
 		if answer in ["y", "yes"]:
+			print_safe("✅ DEBUG: User confirmed installation.")
 			return True
 		elif answer in ["n", "no"]:
+			print_safe("🚫 DEBUG: User declined installation.")
 			return False
 		else:
 			print_safe("❌ Invalid input. Please enter 'y' or 'n'.")
+
 
 def install_missing_dependencies(missing_deps):
 	"""Attempts to install missing dependencies based on OS."""

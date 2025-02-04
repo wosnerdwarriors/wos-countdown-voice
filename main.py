@@ -57,30 +57,9 @@ def check_python_modules():
 			print_safe(f"   - {mod}")
 
 		print_safe("\n⚠️ The script requires these modules to function correctly.")
-
-		# 🔹 Debugging: Ensure we reach the prompt
-		print_safe("\n🔹 DEBUG: About to prompt user for Python module installation...\n")
-		sys.stdout.flush()
-
-		if prompt_for_install("\nWould you like to install the missing Python modules now? (y/n) "):
-			print_safe("\n🔹 DEBUG: User chose to install Python modules.")
-			try:
-				print_safe("\n🔹 Running: pip3 install -r requirements.txt\n")
-				sys.stdout.flush()
-
-				# Run pip3 install in the foreground
-				subprocess.run(["pip3", "install", "-r", REQUIREMENTS_FILE], check=True)
-
-				print_safe("\n✅ Python modules installed successfully. Please restart the script.\n")
-				sys.exit(0)
-			except subprocess.CalledProcessError as e:
-				print_safe("\n❌ Failed to install Python modules. Please run manually:\n")
-				print_safe("   pip3 install -r requirements.txt\n")
-				print_safe(f"\n🔹 DEBUG: Install failed with error -> {e}\n")
-				sys.exit(1)
-		else:
-			print_safe("\n⚠️ Skipping Python module installation. The program may not work correctly.\n")
-			sys.exit(1)
+		print_safe("   To install missing Python modules, run the following command:\n")
+		print_safe("   pip3 install -r requirements.txt\n")
+		sys.exit(1)
 
 
 def check_system_dependencies():
@@ -100,81 +79,21 @@ def check_system_dependencies():
 		for dep in missing_deps:
 			print_safe(f"   - {dep}")
 
-		if prompt_for_install("\nWould you like to install missing system dependencies now? (y/n) "):
-			print("you said yes so now installing missing dependencies")
-			install_missing_dependencies(missing_deps)
-			print_safe("\n✅ System dependencies installed successfully. Please restart the script.\n")
-			sys.exit(0)
-		else:
-			print_safe("\n⚠️ Skipping system dependency installation. The program may not work correctly.\n")
-			sys.exit(1)
+		print_safe("\n⚠️ These dependencies are required for the script to work.")
+		print_safe("   Please install them manually using the appropriate command for your OS:\n")
 
-def prompt_for_install(prompt_text):
-	"""Prompt the user with Y/N to install missing dependencies, with added debugging."""
-	print_safe(f"\n🔹 DEBUG: Reached prompt_for_install with prompt -> {prompt_text}")
-	sys.stdout.flush()  # Ensure output flushes before asking for input
+		os_name = platform.system().lower()
+		if os_name == "linux":
+			print_safe("   sudo apt install ffmpeg  # For Debian/Ubuntu")
+			print_safe("   sudo dnf install ffmpeg  # For Fedora")
+			print_safe("   sudo pacman -S ffmpeg    # For Arch")
+		elif os_name == "darwin":
+			print_safe("   brew install ffmpeg  # For macOS (Homebrew required)")
+		elif os_name == "windows":
+			print_safe("   Open PowerShell and run:\n")
+			print_safe("   winget install -e --id Gyan.FFmpeg\n")
 
-	while True:
-		print_safe("🔹 DEBUG: Waiting for user input... (y/n)")
-		sys.stdout.flush()  # Force output to show immediately
-		answer = input(prompt_text).strip().lower()
-		print_safe(f"🔹 DEBUG: User entered -> '{answer}'")  # Debugging line
-
-		if answer in ["y", "yes"]:
-			print_safe("✅ DEBUG: User chose to install dependencies.")
-			return True
-		elif answer in ["n", "no"]:
-			print_safe("🚫 DEBUG: User declined installation.")
-			return False
-		else:
-			print_safe("❌ Invalid input. Please enter 'y' or 'n'.")
-
-
-
-def install_missing_dependencies(missing_deps):
-	"""Attempts to install missing dependencies based on OS."""
-	os_name = platform.system().lower()
-	for dep in missing_deps:
-		if dep == "ffmpeg":
-			try:
-				print_safe(f"\n📥 Installing {dep} on {os_name}...\n")
-
-				if os_name == "linux":
-					cmd = ["sudo", "apt", "install", "-y", "ffmpeg"]
-				elif os_name == "darwin":
-					cmd = ["brew", "install", "ffmpeg"]
-				elif os_name == "windows":
-					# Run via PowerShell explicitly
-					cmd = ["powershell", "Start-Process", "winget", "-ArgumentList", "'install -e --id Gyan.FFmpeg'", "-Wait", "-NoNewWindow"]
-
-				# Run the command and capture output
-				process = subprocess.run(cmd, text=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-				# Print the full stdout and stderr
-				print_safe(f"✅ Installation output:\n{process.stdout}")
-				if process.stderr:
-					print_safe(f"⚠️ Installation warnings:\n{process.stderr}")
-
-				print_safe(f"\n✅ {dep} installed successfully!")
-
-			except subprocess.CalledProcessError as e:
-				print_safe("\n❌ Automatic installation failed. Error details:\n")
-				print_safe(f"   Command: {e.cmd}")
-				print_safe(f"   Return Code: {e.returncode}")
-				print_safe(f"   Error Output: {e.stderr or 'No additional error output.'}")
-
-				print_safe("\n🔹 Please install FFmpeg manually using one of the following commands:\n")
-				if os_name == "linux":
-					print_safe("   sudo apt install ffmpeg  # For Debian/Ubuntu")
-					print_safe("   sudo dnf install ffmpeg  # For Fedora")
-					print_safe("   sudo pacman -S ffmpeg    # For Arch")
-				elif os_name == "darwin":
-					print_safe("   brew install ffmpeg  # For macOS (Homebrew required)")
-				elif os_name == "windows":
-					print_safe("   Open PowerShell and run: winget install -e --id Gyan.FFmpeg\n")
-
-				sys.exit(1)
-
+		sys.exit(1)
 
 
 async def main():

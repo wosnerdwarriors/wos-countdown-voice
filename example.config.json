@@ -1,6 +1,7 @@
 {
     "token": "your-discord-token-here",
     "webserver-port": 5544,
+    "webserver-host": "127.0.0.1",
     "roles-allowed-to-control-bot": ["countdown-controller", "Admin"],
     "debug": true ,
     "log-messages-to-keep": 0, 

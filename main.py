@@ -21,20 +21,24 @@ def print_safe(text):
 	print(text)
 
 def get_required_modules():
-	"""Read required modules from requirements.txt"""
-	modules = []
-	if not os.path.exists(REQUIREMENTS_FILE):
-		print_safe("❌ requirements.txt not found. Please make sure it exists.")
-		sys.exit(1)
+    """Read required modules from requirements.txt and normalize names"""
+    modules = []
+    if not os.path.exists(REQUIREMENTS_FILE):
+        print_safe("❌ requirements.txt not found. Please make sure it exists.")
+        sys.exit(1)
 
-	with open(REQUIREMENTS_FILE, "r") as f:
-		for line in f:
-			# Extract only the package name (remove versions like "package>=1.0")
-			line = line.strip()
-			if line and not line.startswith("#"):
-				modules.append(line.split("==")[0].split(">=")[0].split("<=")[0])
+    with open(REQUIREMENTS_FILE, "r") as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#"):
+                package_name = line.split("==")[0].split(">=")[0].split("<=")[0].lower()
+                if package_name == "pynacl":
+                    package_name = "nacl"  # Normalize PyNaCl to nacl for import
+                modules.append(package_name)
 
-	return modules
+    return modules
+
+
 
 def check_python_modules():
 	"""Check if required Python modules are installed BEFORE importing anything."""

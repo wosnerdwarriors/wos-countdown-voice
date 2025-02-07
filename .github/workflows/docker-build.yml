@@ -25,7 +25,7 @@ jobs:
       - name: Determine Tag
         id: get_version
         run: |
-          if [[ "${{ github.event_name }}" == "release" ]]; then
+          if [[ "$GITHUB_EVENT_NAME" == "release" ]]; then
             echo "TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
             echo "IS_RELEASE=true" >> $GITHUB_ENV
           else

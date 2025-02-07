@@ -10,7 +10,7 @@ on:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    environment: docker-deploy  # 🔒 Ensures secrets are only accessible in approved branches
+    environment: docker-build # 🔒 Ensures secrets are only accessible in approved branches
 
     steps:
       - name: Checkout Repository

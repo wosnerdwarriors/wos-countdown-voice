@@ -26,11 +26,12 @@ jobs:
         id: get_version
         run: |
           if [[ "$GITHUB_EVENT_NAME" == "release" ]]; then
-            echo "TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-            echo "IS_RELEASE=true" >> $GITHUB_ENV
+            echo "TAG=${GITHUB_REF#refs/tags/}" >> "$GITHUB_ENV"
+            echo "IS_RELEASE=true" >> "$GITHUB_ENV"
           else
-            echo "TAG=latest" >> $GITHUB_ENV
-            echo "IS_RELEASE=false" >> $GITHUB_ENV
+            echo "TAG=latest" >> "$GITHUB_ENV"
+            echo "IS_RELEASE=false" >> "$GITHUB_ENV"
+          fi
 
       - name: Build Docker Image
         run: |
@@ -41,7 +42,7 @@ jobs:
           docker push deathmarcher/wos-countdown-bot:${{ env.TAG }}
 
       - name: Push 'latest' Tag for Releases
-        if: env.IS_RELEASE == 'true'
+        if: ${{ env.IS_RELEASE == 'true' }}
         run: |
           docker tag deathmarcher/wos-countdown-bot:${{ env.TAG }} deathmarcher/wos-countdown-bot:latest
           docker push deathmarcher/wos-countdown-bot:latest

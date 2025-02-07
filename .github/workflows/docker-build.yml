@@ -10,7 +10,7 @@ on:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    environment: docker-build # 🔒 Ensures secrets are only accessible in approved branches
+    environment: docker-build  # 🔒 Ensures secrets are only accessible in approved branches
 
     steps:
       - name: Checkout Repository
@@ -25,7 +25,7 @@ jobs:
       - name: Determine Tag
         id: get_version
         run: |
-          if [ "${{ github.event_name }}" == "release" ]; then
+          if [[ "${{ github.event_name }}" == "release" ]]; then
             echo "TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
             echo "IS_RELEASE=true" >> $GITHUB_ENV
           else

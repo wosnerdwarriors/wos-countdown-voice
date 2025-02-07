@@ -12,8 +12,23 @@ logger = logging.getLogger(__name__)
 with open("config.json", "r") as config_file:
     config = json.load(config_file)
 
-# Get the web server port from the configuration, with a default fallback
-webserver_port = config.get("webserver-port", 5544)
+RUNNING_IN_DOCKER = os.getenv("RUNNING_IN_DOCKER", "false").lower() == "true"
+
+DEFAULT_PORT = 5544 
+DEFAULT_HOST = "127.0.0.1" # when not using docker
+
+# Set webserver port:
+if RUNNING_IN_DOCKER:
+    webserver_port = DEFAULT_PORT  # Always 5544 in Docker
+else:
+    webserver_port = config.get("webserver-port", DEFAULT_PORT)  # Use config, fallback to 5544
+
+# Set webserver host:
+if RUNNING_IN_DOCKER:
+    webserver_host = "0.0.0.0"  # Always 0.0.0.0 in Docker
+else:
+    webserver_host = config.get("webserver-host", DEFAULT_HOST)  # Use config, fallback to 127.0.0.1
+
 
 app = Quart(__name__)
 app.config['DEBUG'] = True
@@ -113,4 +128,4 @@ async def get_all_logs():
 
 
 async def main_web():
-    await app.run_task(port=webserver_port)
+	await app.run_task(host=webserver_host, port=webserver_port)

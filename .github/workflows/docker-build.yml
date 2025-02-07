@@ -3,13 +3,14 @@ name: Docker Build & Push
 on:
   push:
     branches:
-      - main  # Triggers build when main is updated
+      - main  # ✅ Triggers build when main is updated
   release:
-    types: [published]  # Triggers when a new release is published
+    types: [published]  # ✅ Triggers when a new release is published
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    environment: docker-deploy  # 🔒 Ensures secrets are only accessible in approved branches
 
     steps:
       - name: Checkout Repository
@@ -26,9 +27,10 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" == "release" ]; then
             echo "TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+            echo "IS_RELEASE=true" >> $GITHUB_ENV
           else
             echo "TAG=latest" >> $GITHUB_ENV
-          fi
+            echo "IS_RELEASE=false" >> $GITHUB_ENV
 
       - name: Build Docker Image
         run: |
@@ -38,8 +40,8 @@ jobs:
         run: |
           docker push deathmarcher/wos-countdown-bot:${{ env.TAG }}
 
-      - name: Push Additional 'latest' Tag for Releases
-        if: github.event_name == 'release'
+      - name: Push 'latest' Tag for Releases
+        if: env.IS_RELEASE == 'true'
         run: |
           docker tag deathmarcher/wos-countdown-bot:${{ env.TAG }} deathmarcher/wos-countdown-bot:latest
           docker push deathmarcher/wos-countdown-bot:latest

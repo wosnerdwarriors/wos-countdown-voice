@@ -24,8 +24,12 @@ The **WOS Countdown Bot** is a Discord bot that plays countdown audio clips in v
    - ✅ `Read Message History`
    - ✅ `Use Slash Commands`
    - ✅ `Manage Messages`
-4. Copy the **Generated URL** and open it in your browser.
-5. Select a **server you own** and invite the bot.
+4. Navigate to **Bot**, and enable:
+   - ✅ `**Presence Intentents**`
+   - ✅ `**Server Members Intent**`
+   - ✅ `**Message Content Intent**`
+5. Copy the **Generated URL** and open it in your browser.
+6. Select a **server you own** and invite the bot.
 
 ---
 
@@ -72,6 +76,15 @@ brew install python3 ffmpeg
 2. Open **PowerShell** (Win+X → Terminal) and install FFmpeg:
    ```sh
    winget install -e --id Gyan.FFmpeg
+   ```
+3. Configure the system path for FFmpeg:
+   - Add FFmpeg to system PATH(replace actual path as needed) using commands or via UI:
+   ```bash
+   setx PATH "%PATH%;C:\ffmpeg\bin"
+   ```
+   Or, if needed temporarily during runtime in powershell:
+   ```powershell
+   $env:Path += ";C:\Users\<Your-User>\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_<hash>\ffmpeg\bin"
    ```
 
 ---

@@ -1,3 +1,4 @@
+
 # WOS Countdown Bot for Discord
 
 ## Overview
@@ -25,9 +26,9 @@ The **WOS Countdown Bot** is a Discord bot that plays countdown audio clips in v
    - ✅ `Use Slash Commands`
    - ✅ `Manage Messages`
 4. Navigate to **Bot**, and enable:
-   - ✅ `**Presence Intentents**`
-   - ✅ `**Server Members Intent**`
-   - ✅ `**Message Content Intent**`
+   - ✅ `Presence Intent`
+   - ✅ `Server Members Intent`
+   - ✅ `Message Content Intent`
 5. Copy the **Generated URL** and open it in your browser.
 6. Select a **server you own** and invite the bot.
 
@@ -52,7 +53,7 @@ The **WOS Countdown Bot** is a Discord bot that plays countdown audio clips in v
 
 ---
 
-## 🛠️ **Installation**
+## 🛠️ **Installation (Local Environment)**
 ### 📌 **Step 1: Install Python and Pip**
 #### **Linux (Debian/Ubuntu)**:
 ```sh
@@ -73,36 +74,25 @@ brew install python3 ffmpeg
 #### **Windows**:
 1. Download [Python 3](https://www.python.org/downloads/) and install it.
    - **Ensure you select**: ✅ "Add Python to PATH"
-2. Open **PowerShell** (Win+X → Terminal) and install FFmpeg:
+2. Open **PowerShell** and install FFmpeg:
    ```sh
    winget install -e --id Gyan.FFmpeg
    ```
-3. Configure the system path for FFmpeg:
-   - Add FFmpeg to system PATH(replace actual path as needed) using commands or via UI:
-   ```bash
-   setx PATH "%PATH%;C:\ffmpeg\bin"
-   ```
-   Or, if needed temporarily during runtime in powershell:
-   ```powershell
-   $env:Path += ";C:\Users\<Your-User>\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_<hash>\ffmpeg\bin"
-   ```
-
----
 
 ### 📌 **Step 2: Install Required Python Modules**
-Run the following command **inside the project directory**:
+Run the following command inside the project directory:
 ```sh
 pip3 install -r requirements.txt
 ```
 
 ---
 
-## ▶️ **Running the Bot**
-#### **Linux/macOS**:
+## ▶️ **Running the Bot (Locally)**
+### **Linux/macOS**:
 ```sh
 ./main.py
 ```
-#### **Windows (PowerShell)**:
+### **Windows (PowerShell)**:
 ```sh
 python main.py
 ```
@@ -112,6 +102,40 @@ To skip dependency validation, use:
 ```sh
 ./main.py --bypass-module-check
 ```
+
+---
+
+## 🐳 **Docker Setup**
+
+### **Using Prebuilt Docker Images**
+You can run the bot using prebuilt Docker images available on Docker Hub.
+
+- **Main Branch (`latest`):**  
+  This image is built from the `main` branch and tagged as `latest`.
+  ```sh
+  docker run -it --rm     --name wos-countdown-bot     -v $(pwd)/config.json:/app/config.json     -v $(pwd)/sound-clips:/app/sound-clips     -p 127.0.0.1:5544:5544     deathmarcher/wos-countdown-bot:latest
+  ```
+
+- **Release Tags:**  
+  If you want to run a specific release version, replace `latest` with the release tag (e.g., `v1.0.0`).
+  ```sh
+  docker run -it --rm     --name wos-countdown-bot     -v $(pwd)/config.json:/app/config.json     -v $(pwd)/sound-clips:/app/sound-clips     -p 127.0.0.1:5544:5544     deathmarcher/wos-countdown-bot:v1.0.0
+  ```
+
+---
+
+### **Building the Docker Image Locally**
+If you prefer to build the image locally, follow these steps:
+
+1. Build the Docker image:
+   ```sh
+   docker build -t deathmarcher/wos-countdown-bot .
+   ```
+
+2. Run the locally built image:
+   ```sh
+   docker run -it --rm      --name wos-countdown-bot      -v $(pwd)/config.json:/app/config.json      -v $(pwd)/sound-clips:/app/sound-clips      -p 127.0.0.1:5544:5544      deathmarcher/wos-countdown-bot
+   ```
 
 ---
 
@@ -143,5 +167,6 @@ This bot is still **new and under testing**.
 - Ping **deathmarcher** on our [Discord Server](https://wosnerds.com/)
 - Or **create an issue** on GitHub!
 
-Happy Counting! 🎉
+---
 
+## 🎉 **Happy Counting!** 🎉

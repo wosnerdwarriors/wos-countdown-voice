@@ -113,6 +113,41 @@ To skip dependency validation, use:
 ./main.py --bypass-module-check
 ```
 
+
+---
+
+## 🐳 **Docker Setup**
+
+### **Using Prebuilt Docker Images**
+You can run the bot using prebuilt Docker images available on Docker Hub.
+
+- **Main Branch (`latest`):**  
+  This image is built from the `main` branch and tagged as `latest`.
+  ```sh
+  docker run -it --rm --name wos-countdown-bot -v $(pwd)/config.json:/app/config.json -v $(pwd)/sound-clips:/app/sound-clips -p 127.0.0.1:5544:5544 deathmarcher/wos-countdown-bot:latest
+  ```
+
+- **Release Tags:**  
+  If you want to run a specific release version, replace `latest` with the release tag (e.g., `v1.0.0`).
+  ```sh
+  docker run -it --rm --name wos-countdown-bot -v $(pwd)/config.json:/app/config.json -v $(pwd)/sound-clips:/app/sound-clips -p 127.0.0.1:5544:5544 deathmarcher/wos-countdown-bot:v1.0.0
+  ```
+
+---
+
+### **Building the Docker Image Locally**
+If you prefer to build the image locally, follow these steps:
+
+1. Build the Docker image:
+   ```sh
+   docker build -t deathmarcher/wos-countdown-bot .
+   ```
+
+2. Run the locally built image:
+   ```sh
+   docker run --name wos-countdown-bot -v $(pwd)/config.json:/app/config.json -v $(pwd)/sound-clips:/app/sound-clips -p 127.0.0.1:5544:5544 deathmarcher/wos-countdown-bot
+   ```
+
 ---
 
 ## 🎮 **Using the Bot**

@@ -31,6 +31,12 @@ The **WOS Countdown Bot** is a Discord bot that plays countdown audio clips in v
 5. Copy the **Generated URL** and open it in your browser.
 6. Select a **server you own** and invite the bot.
 
+Alternatively, here's the url you would use if you replace your clientID
+
+```
+https://discord.com/oauth2/authorize?scope=bot%20applications.commands&permissions=274878221440&client_id=YOUR_CLIENT_ID
+```
+
 ---
 
 ## 🔧 **Configuration**

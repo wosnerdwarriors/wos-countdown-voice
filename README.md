@@ -12,24 +12,44 @@ The **WOS Countdown Bot** is a Discord bot that plays countdown audio clips in v
    - **⚠️ Save this token** – you will need it later!
 
 ### 2️⃣ **Invite the Bot to Your Server**
-1. In the sidebar, go to **OAuth2 → URL Generator**.
-2. Under **Scopes**, select:
-   - ✅ `bot`
-   - ✅ `applications.commands`
-3. Under **Bot Permissions**, select:
-   - ✅ `View Channels`
-   - ✅ `Connect`
-   - ✅ `Speak`
-   - ✅ `Send Messages`
-   - ✅ `Read Message History`
-   - ✅ `Use Slash Commands`
-   - ✅ `Manage Messages`
-4. Navigate to **Bot**, and enable:
-   - ✅ `**Presence Intentents**`
-   - ✅ `**Server Members Intent**`
-   - ✅ `**Message Content Intent**`
-5. Copy the **Generated URL** and open it in your browser.
-6. Select a **server you own** and invite the bot.
+
+1.  In your Discord Developer Portal, go to **OAuth2 → URL Generator**.
+
+2.  **Choose your preferred method for generating the invite link:**
+
+    *   **Option 1: Guild Install Link (Simplified)**
+        *   Use this URL structure, replacing `REPLACE-CLIENT-ID` with your bot's Client ID:
+
+            ```
+            https://discord.com/oauth2/authorize?client_id=REPLACE-CLIENT-ID&permissions=2150706176&integration_type=0&scope=bot+applications.commands
+            ```
+
+    *   **Option 2: Granular Permissions**
+        *   This method allows you to specify the exact permissions your bot needs.
+
+            1.  Under **Scopes**, select:
+                *   ✅ `bot`
+                *   ✅ `applications.commands`
+            2.  Under **Bot Permissions**, select:
+                *   ✅ `View Channels`
+                *   ✅ `Connect`
+                *   ✅ `Speak`
+                *   ✅ `Send Messages`
+                *   ✅ `Read Message History`
+                *   ✅ `Use Slash Commands`
+                *   ✅ `Manage Messages`
+
+3. Navigate to **Bot**, and enable the following **Privileged Gateway Intents**:
+    *   ✅ `Presence Intent`
+    *   ✅ `Server Members Intent`
+    *   ✅ `Message Content Intent`
+
+    *Note: Enabling these intents might require verification from Discord.*
+
+4.  Copy the **Generated URL** (from either Option 1 or 2) and open it in your browser.
+
+5.  Select a **server you own** from the dropdown menu and authorize the bot to join.
+
 
 ---
 

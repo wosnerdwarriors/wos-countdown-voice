@@ -398,7 +398,9 @@
                 const li = document.createElement('li'); li.className = 'list-group-item';
                 if (p._editing) {
                     const left = document.createElement('div'); left.className = 'edit-inline';
-                    left.innerHTML = `<input id="pl_edit_name_${p.id}" class="form-control" value="${p.name}"><input id="pl_edit_secs_${p.id}" type="number" class="form-control" value="${p.secs}">`;
+                    left.innerHTML = `<input id="pl_edit_name_${p.id}" class="form-control"> <input id="pl_edit_secs_${p.id}" type="number" class="form-control">`;
+                    left.querySelector(`#pl_edit_name_${p.id}`).value = p.name;
+                    left.querySelector(`#pl_edit_secs_${p.id}`).value = p.secs;
                     const right = document.createElement('div');
                     right.innerHTML = `
                         <button class="btn btn-sm btn-success" onclick="pl_saveEdit('${p.id}')">Save</button>
@@ -406,7 +408,13 @@
                     li.appendChild(left); li.appendChild(right);
                 } else {
                     const left = document.createElement('div');
-                    left.innerHTML = `<span class="name">${p.name}</span>: <span class="secs">${p.secs}s</span>`;
+                    const nameSpan = document.createElement('span');
+                    nameSpan.className = 'name';
+                    nameSpan.textContent = p.name;
+                    const secsSpan = document.createElement('span');
+                    secsSpan.className = 'secs';
+                    secsSpan.textContent = `${p.secs}s`;
+                    left.append(nameSpan, ': ', secsSpan);
                     const right = document.createElement('div');
                     right.innerHTML = `
                         <button class="btn btn-sm btn-outline-secondary" onclick="pl_startEdit('${p.id}')">Edit</button>
@@ -575,11 +583,14 @@
             rt_rallies.forEach(r => {
                 const launchRemain = r.launchEndAt - now;
                 const landRemain = r.hitAt - now;
-                const card = document.createElement('div'); card.className = 'card rally-card card-soft mb-3';
+
+                // Build static markup WITHOUT user data, then inject user data via textContent (XSS-safe)
+                const card = document.createElement('div');
+                card.className = 'card rally-card card-soft mb-3';
                 card.innerHTML = `
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-center">
-                            <div class="title">${r.starterName}</div>
+                            <div class="title"></div>
                             <button class="btn btn-sm btn-danger" onclick="rt_delete('${r.id}')">Delete</button>
                         </div>
                         <div class="rally-times mt-3">
@@ -597,6 +608,9 @@
                             </div>
                         </div>
                     </div>`;
+                // Safely inject the user-provided starter name
+                card.querySelector('.title').textContent = r.starterName;
+
                 wrap.appendChild(card);
             });
         }

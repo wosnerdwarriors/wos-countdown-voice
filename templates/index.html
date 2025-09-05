@@ -37,6 +37,16 @@
         .rt-table th, .rt-table td { vertical-align: middle; }
         .edit-inline { display: inline-flex; align-items: center; }
         .edit-inline input { width: 140px; margin-right: 6px; }
+
+        /* Stronger, more accessible focus styles */
+        .form-control:focus,
+        .custom-select:focus,
+        select.form-control:focus,
+        #rtStarterSelect:focus {
+          border-color: #ff9800 !important;            /* vivid orange border */
+          box-shadow: 0 0 0 .25rem rgba(255,152,0,.45) !important; /* glow */
+          outline: 0;                                   /* remove default outline */
+        }
     </style>
 </head>
 <body>
@@ -78,7 +88,7 @@
         <!-- Rally Tracker view -->
         <div id="rallySection" class="section hidden">
             <div class="row">
-                <!-- March Times -->
+                <!-- LEFT: March Times + Settings -->
                 <div class="col-lg-6 mb-3">
                     <div class="mb-2 section-title">March Times</div>
                     <div class="list-soft">
@@ -92,9 +102,59 @@
                         </div>
                         <div class="small-muted mt-2">You can edit players later or fine-tune using ±1s.</div>
                     </div>
+
+                    <!-- Settings (was Audio Sync) -->
+                    <div class="card card-soft mt-3 p-3">
+                        <h6 class="mb-2">Settings</h6>
+                        <p class="small-muted mb-2">
+                          When <strong id="rtFirstSecDisplay">50s</strong> remain,
+                          <code id="rtVoiceExampleStatic"></code> is played via the API.
+                          Configure the voice pack and timing below.
+                        </p>
+
+                        <div class="form-row align-items-end">
+                            <div class="form-group col-md-6">
+                                <label for="rtVoicePrefix">Voice pack</label>
+                                <select id="rtVoicePrefix" class="form-control" onchange="rt_onVoiceChange()"></select>
+                                <small class="form-text text-muted small-muted">
+                                  Pick the <em>name-language</em> of your files (e.g., <code>countdown-en</code>).
+                                  Files must be named <code>name-language-START-END.mp3</code>.
+                                </small>
+                            </div>
+                            <div class="form-group col-md-6">
+                                <label for="rtFirstCallSec">First call second</label>
+                                <select id="rtFirstCallSec" class="form-control" onchange="rt_onFirstSecChange()"></select>
+                                <small class="form-text text-muted small-muted">
+                                  Second before land for the first audio (e.g., 55s, 50s, 45s). Options are derived from the selected voice pack.
+                                </small>
+                            </div>
+                        </div>
+
+                        <div class="form-row align-items-end">
+                            <div class="form-group col-md-4">
+                                <label for="rtSyncLead">First trigger lead (ms)</label>
+                                <input type="number" id="rtSyncLead" class="form-control" step="50" value="0">
+                                <small class="form-text text-muted small-muted">Offset for the first call. Positive = earlier; negative = later.</small>
+                            </div>
+                            <div class="form-group col-md-4">
+                                <label for="rtChainLead">Chain lead (ms)</label>
+                                <input type="number" id="rtChainLead" class="form-control" step="50" value="0">
+                                <small class="form-text text-muted small-muted">Offset for each chained countdown after the first.</small>
+                            </div>
+                            <div class="form-group col-md-4">
+                                <label for="rtFallbackTol">Fallback tolerance (s)</label>
+                                <input type="number" id="rtFallbackTol" class="form-control" step="1" min="0" value="5">
+                                <small class="form-text text-muted small-muted">If no exact gap exists, use the next lower file within this window.</small>
+                            </div>
+                        </div>
+
+                        <div class="form-group mt-2">
+                            <button class="btn btn-secondary" onclick="rt_saveSyncLead()">Save</button>
+                        </div>
+                    </div>
                 </div>
 
-                <!-- Rallies -->
+                <!-- RIGHT: Rallies -->
                 <div class="col-lg-6 mb-3">
                     <div class="mb-2 section-title">Rallies</div>
 
@@ -123,35 +183,14 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="d-flex">
+                        <div class="d-flex align-items-center">
                             <button class="btn btn-primary mr-2" onclick="rt_startRally()">Start Rally</button>
                             <button class="btn btn-outline-secondary" onclick="rt_toggleMode()">Switch Time Mode</button>
+                            <!-- Right-aligned controls -->
+                            <button class="btn btn-outline-warning ml-auto mr-2" onclick="rt_stopAudio()">Stop Audio</button>
+                            <button class="btn btn-outline-danger" onclick="rt_resetAll()">Reset</button>
                         </div>
-                        <hr>
-                        <div>
-                            <h6 class="mb-2">Audio Sync</h6>
-                            <p class="small-muted mb-2">
-                              When <strong>50s</strong> remain, <code>reinforce-en-50-0.mp3</code> is played via the API.
-                              Configure the leads and the chained-gap fallback tolerance.
-                            </p>
-                            <div class="form-row align-items-end">
-                                <div class="form-group col-md-3">
-                                    <label for="rtSyncLead">First trigger lead (ms)</label>
-                                    <input type="number" id="rtSyncLead" class="form-control" step="50" value="0">
-                                </div>
-                                <div class="form-group col-md-3">
-                                    <label for="rtChainLead">Chain lead (ms)</label>
-                                    <input type="number" id="rtChainLead" class="form-control" step="50" value="0">
-                                </div>
-                                <div class="form-group col-md-3">
-                                    <label for="rtFallbackTol">Fallback tolerance (s)</label>
-                                    <input type="number" id="rtFallbackTol" class="form-control" step="1" min="0" value="5">
-                                </div>
-                                <div class="form-group col-md-3">
-                                    <button class="btn btn-secondary btn-block" onclick="rt_saveSyncLead()">Save</button>
-                                </div>
-                            </div>
-                        </div>
+                        <!-- (Settings are on the left column) -->
                     </div>
                 </div><!-- /Rallies -->
             </div>
@@ -169,15 +208,20 @@
         let categories = new Set(['all']);
 
         // === Rally Tracker state ===
-        const RT_THRESHOLD_MS = 50 * 1000; // 50 seconds before hit
-        let rt_syncLeadMs  = parseInt(localStorage.getItem('rt_syncLeadMs')  || '0', 10); // first 50s trigger
-        let rt_chainLeadMs = parseInt(localStorage.getItem('rt_chainLeadMs') || '0', 10); // chained files
+        const RT_THRESHOLD_MS = 50 * 1000; // legacy constant (unused now)
 
-        // Fallback tolerance in seconds for chained gaps (user-configurable; default 5s)
+        // Leads/tolerances
+        let rt_syncLeadMs  = parseInt(localStorage.getItem('rt_syncLeadMs')  || '0', 10); // first call lead
+        let rt_chainLeadMs = parseInt(localStorage.getItem('rt_chainLeadMs') || '0', 10); // chained calls lead
         let rt_fallbackTolSec = parseInt(localStorage.getItem('rt_fallbackTolSec') || '5', 10);
         if (isNaN(rt_fallbackTolSec) || rt_fallbackTolSec < 0) rt_fallbackTolSec = 5;
 
-        // Prevent multiple 50s triggers while the first /api/play is pending
+        // First call second & voice pack
+        let rt_voicePrefix = localStorage.getItem('rt_voicePrefix') || 'countdown-en';
+        let rt_firstCallSec = parseInt(localStorage.getItem('rt_firstCallSec') || '50', 10);
+        let rt_voicePrefixes = [];
+
+        // Prevent multiple first-call triggers while /api/play pending
         let rt_pendingFirst = false;
 
         // Players (march times)
@@ -185,10 +229,50 @@
         // Rallies
         let rt_rallies = []; // {id, starterId, starterName, marchSec, launchEndAt, hitAt, triggered50, lastLandMs}
 
-        // Countdown chain (sequential) state & reinforce sounds map
+        // Chain state & available files for the current voice pack
         let rt_chain = { active: false, processedAt: 0, anchorRallyId: null };
-        let rt_reinforceBySec = new Map(); // seconds -> [sound names]
+        let rt_reinforceBySec = new Map(); // seconds -> [file names]
         let rt_reinforceLoaded = false;
+
+        // Update the static example to always show countdown-en
+        function rt_updateVoiceExample(){
+          const staticEl = document.getElementById('rtVoiceExampleStatic');
+          if (staticEl) staticEl.textContent = `countdown-en-${rt_firstCallSec}-0.mp3`;
+        }
+        function rt_onVoiceChange(){
+          const sel = document.getElementById('rtVoicePrefix');
+          if (sel) {
+            rt_voicePrefix = sel.value;
+            rt_updateVoiceExample();
+            rt_loadReinforceSounds();
+          }
+        }
+        function rt_onFirstSecChange(){
+          const sel = document.getElementById('rtFirstCallSec');
+          if (sel) {
+            rt_firstCallSec = parseInt(sel.value, 10) || rt_firstCallSec;
+            const lbl = document.getElementById('rtFirstSecDisplay');
+            if (lbl) lbl.textContent = `${rt_firstCallSec}s`;
+            rt_updateVoiceExample();
+          }
+        }
+        function rt_renderFirstCallOptions(){
+          const sel = document.getElementById('rtFirstCallSec');
+          if (!sel) return;
+          const secs = Array.from(rt_reinforceBySec.keys()).sort((a,b)=>b-a);
+          sel.innerHTML = '';
+          secs.forEach(s => {
+            const opt = document.createElement('option');
+            opt.value = s; opt.textContent = `${s}s`; sel.appendChild(opt);
+          });
+          if (!secs.includes(rt_firstCallSec)) {
+            rt_firstCallSec = secs.includes(50) ? 50 : (secs[0] || 50);
+          }
+          sel.value = String(rt_firstCallSec);
+          const lbl = document.getElementById('rtFirstSecDisplay');
+          if (lbl) lbl.textContent = `${rt_firstCallSec}s`;
+          rt_updateVoiceExample();
+        }
 
         // ===== General UI =====
         function showSection(section) {
@@ -216,14 +300,24 @@
                 document.getElementById('rallySection').classList.remove('hidden');
                 document.getElementById('showRally').classList.add('btn-primary');
                 document.getElementById('showRally').classList.remove('btn-secondary');
+
                 document.getElementById('rtSyncLead').value = String(rt_syncLeadMs);
                 const chLead = document.getElementById('rtChainLead');
                 if (chLead) chLead.value = String(rt_chainLeadMs);
                 const fbTol = document.getElementById('rtFallbackTol');
                 if (fbTol) fbTol.value = String(rt_fallbackTolSec);
+                const vpSel = document.getElementById('rtVoicePrefix');
+                if (vpSel) vpSel.value = rt_voicePrefix;
+                const firstSel = document.getElementById('rtFirstCallSec');
+                if (firstSel) firstSel.value = String(rt_firstCallSec);
+                const lbl = document.getElementById('rtFirstSecDisplay');
+                if (lbl) lbl.textContent = `${rt_firstCallSec}s`;
+
+                rt_updateVoiceExample();
                 pl_render();
                 rt_renderStarterSelect();
                 rt_render();
+                setupKeyboardUX(); // enable keyboard UX when showing Rally section
             }
         }
 
@@ -435,22 +529,60 @@
             pl_players.forEach(p => { const opt = document.createElement('option'); opt.value = p.id; opt.textContent = `${p.name} (${p.secs}s)`; sel.appendChild(opt); });
         }
 
-        // ===== Reinforce sounds & chain helpers =====
+        // ===== Voice files & chain helpers =====
         async function rt_loadReinforceSounds() {
             try {
                 const resp = await fetch('/api/sounds');
                 const list = await resp.json();
+
+                // Build available voice prefixes from files named name-language-start-end
+                const prefixesSet = new Set();
+                list.forEach(name => {
+                    const parts = name.split('-');
+                    if (parts.length >= 4) {
+                        const start = parseInt(parts[2], 10);
+                        const end = parseInt(parts[3], 10);
+                        if (!isNaN(start) && !isNaN(end)) {
+                            prefixesSet.add(`${parts[0]}-${parts[1]}`);
+                        }
+                    }
+                });
+                rt_voicePrefixes = Array.from(prefixesSet).sort();
+
+                // Populate dropdown
+                const sel = document.getElementById('rtVoicePrefix');
+                if (sel) {
+                    sel.innerHTML = '';
+                    rt_voicePrefixes.forEach(p => {
+                        const opt = document.createElement('option');
+                        opt.value = p; opt.textContent = p; sel.appendChild(opt);
+                    });
+                    if (!rt_voicePrefixes.includes(rt_voicePrefix)) {
+                        rt_voicePrefix = rt_voicePrefixes[0] || 'countdown-en';
+                        localStorage.setItem('rt_voicePrefix', rt_voicePrefix);
+                    }
+                    sel.value = rt_voicePrefix;
+                }
+                rt_updateVoiceExample();
+
+                // Build seconds→file map for selected prefix
                 const map = new Map();
-                list.filter(n => n.startsWith('reinforce-')).forEach(name => {
-                    const s = rt_extractSecondsFromName(name);
-                    if (s != null && s >= 10 && s <= 60) {
-                        if (!map.has(s)) map.set(s, []);
-                        map.get(s).push(name);
+                list.filter(n => n.startsWith(rt_voicePrefix + '-')).forEach(name => {
+                    const parts = name.split('-');
+                    if (parts.length >= 4) {
+                        const sec = parseInt(parts[2], 10);
+                        if (!isNaN(sec) && sec >= 10 && sec <= 60) {
+                            if (!map.has(sec)) map.set(sec, []);
+                            map.get(sec).push(name);
+                        }
                     }
                 });
                 rt_reinforceBySec = map;
                 rt_reinforceLoaded = true;
-            } catch (e) { console.error('Failed to load reinforce sounds', e); }
+
+                // Populate first-call seconds based on this pack
+                rt_renderFirstCallOptions();
+            } catch (e) { console.error('Failed to load voice files', e); }
         }
         function rt_extractSecondsFromName(name) {
             const parts = name.split('-');
@@ -464,16 +596,15 @@
             const arr = rt_reinforceBySec.get(sec);
             if (!arr || arr.length === 0) return null;
             const preferred = arr.find(s => s.includes('-en-') && /-0$/.test(s))
-                           || arr.find(s => s.includes('-en-'))
+                           || arr.find(s => /-0$/.test(s))
                            || arr[0];
             return preferred;
         }
         function rt_pickReinforceNearest(sec, toleranceSec = rt_fallbackTolSec) {
-            // Prefer a floor (<= sec) within tolerance; else choose absolute nearest within tolerance
             const keys = Array.from(rt_reinforceBySec.keys()).sort((a,b)=>a-b);
             if (keys.length === 0) return null;
 
-            // 1) floor within tolerance
+            // Prefer floor <= sec within tolerance
             let floor = null;
             for (let i = 0; i < keys.length; i++) {
                 const k = keys[i];
@@ -483,7 +614,7 @@
                 return rt_pickReinforceForSeconds(floor);
             }
 
-            // 2) absolute nearest within tolerance
+            // Else absolute nearest within tolerance
             let nearest = null, best = Infinity;
             for (const k of keys) {
                 const d = Math.abs(k - sec);
@@ -508,25 +639,24 @@
 
             if (!next) { rt_chain.active = false; return; }
 
-            // Chain lead: start relative to the previous rally's land time (anchor)
-            const chainLead = Math.max(0, rt_chainLeadMs);
-            const fireAt = rt_chain.processedAt - chainLead; // start immediately when previous rally lands (or earlier with lead)
-            if (now < fireAt) return; // not yet time
-
             const deltaSec = Math.round((next.hitAt - rt_chain.processedAt) / 1000);
             let sound = rt_pickReinforceForSeconds(deltaSec);
+            if (!sound) sound = rt_pickReinforceNearest(deltaSec);
             if (!sound) {
-                // Try nearest-available fallback within tolerance
-                sound = rt_pickReinforceNearest(deltaSec);
-                if (!sound) {
-                    // Still nothing (e.g., 2s gap and no close file) — skip to the next rally
-                    rt_chain.processedAt = next.hitAt;
-                    return;
-                } else {
-                    const chosenSec = rt_extractSecondsFromName(sound);
-                    console.log(`[CHAIN] Fallback used: ${deltaSec}s → ${chosenSec}s with`, sound);
-                }
+                // Nothing usable — skip to the next rally
+                rt_chain.processedAt = next.hitAt;
+                return;
             }
+
+            const chosenSec = rt_extractSecondsFromName(sound) ?? deltaSec;
+
+            // Wait until the gap reaches chosenSec (never earlier), then apply chain lead (ms)
+            const chainLead = Math.max(0, rt_chainLeadMs);
+            const waitMs = Math.max(0, (deltaSec - chosenSec) * 1000 - chainLead);
+            const fireAt = rt_chain.processedAt + waitMs;
+
+            if (now < fireAt) return; // not yet time
+
             if (!selectedGuildId) {
                 displayMessage('Select a server and join a voice channel first (no guild selected).', 'warning');
                 rt_chain.processedAt = next.hitAt;
@@ -540,17 +670,33 @@
         function rt_save() { localStorage.setItem('rt_rallies', JSON.stringify(rt_rallies)); }
         function rt_load() { try { rt_rallies = JSON.parse(localStorage.getItem('rt_rallies') || '[]'); } catch { rt_rallies = []; } }
         function msToClock(ms) { const s = Math.max(0, Math.floor(ms/1000)); const m = Math.floor(s/60); const r = s%60; return `${m}m ${r}s`; }
+
         function rt_saveSyncLead() {
             const v1 = parseInt(document.getElementById('rtSyncLead').value, 10);
             const v2 = parseInt(document.getElementById('rtChainLead').value, 10);
             const v3 = parseInt(document.getElementById('rtFallbackTol').value, 10);
+            const vpSel = document.getElementById('rtVoicePrefix');
+            const secSel = document.getElementById('rtFirstCallSec');
+
+            const vp = vpSel && vpSel.value ? vpSel.value : rt_voicePrefix;
+            const firstSec = secSel && secSel.value ? parseInt(secSel.value, 10) : rt_firstCallSec;
+
             rt_syncLeadMs  = isNaN(v1) ? 0 : v1;
             rt_chainLeadMs = isNaN(v2) ? 0 : v2;
             rt_fallbackTolSec = (isNaN(v3) || v3 < 0) ? 5 : v3;
+            rt_voicePrefix = vp;
+            rt_firstCallSec = isNaN(firstSec) ? rt_firstCallSec : firstSec;
+
             localStorage.setItem('rt_syncLeadMs',  String(rt_syncLeadMs));
             localStorage.setItem('rt_chainLeadMs', String(rt_chainLeadMs));
             localStorage.setItem('rt_fallbackTolSec', String(rt_fallbackTolSec));
-            displayMessage(`Saved — first lead: ${rt_syncLeadMs} ms, chain lead: ${rt_chainLeadMs} ms, fallback: ${rt_fallbackTolSec}s`, 'success');
+            localStorage.setItem('rt_voicePrefix', rt_voicePrefix);
+            localStorage.setItem('rt_firstCallSec', String(rt_firstCallSec));
+
+            rt_updateVoiceExample();
+            rt_loadReinforceSounds();
+
+            displayMessage(`Saved — voice: ${rt_voicePrefix}, first call: ${rt_firstCallSec}s, first lead: ${rt_syncLeadMs} ms, chain lead: ${rt_chainLeadMs} ms, fallback: ${rt_fallbackTolSec}s`, 'success');
         }
         function rt_toggleMode(){ displayMessage('Time mode active (launch duration).', 'info'); }
 
@@ -615,24 +761,138 @@
             });
         }
 
-        async function rt_tryTrigger50s(rally) {
+        // --- Keyboard UX: tab loop + Enter + ":" / "." / "," hop ---
+        function setupKeyboardUX(){
+          const starter = document.getElementById('rtStarterSelect');
+          const min = document.getElementById('rtLaunchMin');
+          const sec = document.getElementById('rtLaunchSec');
+          if (!starter || !min || !sec) return;
+
+          // Helper: try to select the input's content (type=number can be finicky across browsers)
+          function scheduleSelectOrArm(el){
+            // Try a couple of async attempts to beat browser timing
+            setTimeout(() => { try { el.select(); } catch(_) {} }, 0);
+            if (window.requestAnimationFrame) {
+              requestAnimationFrame(() => { try { el.select(); } catch(_) {} });
+            }
+            // Fallback: if selection isn't supported (e.g., number inputs), arm an overwrite-on-first-typed-digit
+            el.dataset.rtArmOverwrite = '1';
+          }
+          function focusAndSelect(el){
+            el.focus();
+            scheduleSelectOrArm(el);
+          }
+
+          // Track if focus arrived via TAB (or Shift+TAB)
+          if (!window.__rtTabTrackerBound) {
+            document.addEventListener('keydown', (e) => {
+              if (e.key === 'Tab') {
+                window.__rtLastKeyWasTab = true;
+              } else if (e.key !== 'Shift') {
+                window.__rtLastKeyWasTab = false;
+              }
+            });
+            window.__rtTabTrackerBound = true;
+          }
+
+          // When tabbing into minutes/seconds, select the whole content so typing overwrites
+          min.onfocus = () => {
+            if (window.__rtLastKeyWasTab) scheduleSelectOrArm(min);
+          };
+          sec.onfocus = () => {
+            if (window.__rtLastKeyWasTab) scheduleSelectOrArm(sec);
+          };
+
+          // Starter: Tab -> Minutes, Shift+Tab -> Seconds (wrap), Enter -> Minutes (select)
+          starter.onkeydown = (e) => {
+            if (e.key === 'Tab') {
+              e.preventDefault();
+              if (e.shiftKey) {
+                sec.focus();             // backwards wrap
+              } else {
+                min.focus();             // forward
+              }
+            } else if (e.key === 'Enter') {
+              e.preventDefault();
+              focusAndSelect(min);
+            }
+          };
+
+          // Minutes: Tab/Shift+Tab loop, Enter starts + focus Starter, ':'/'.'/',' jumps to Seconds (select)
+          min.onkeydown = (e) => {
+            // If we armed overwrite and user types a digit, clear value so next key becomes the new value
+            if (min.dataset.rtArmOverwrite === '1' && /^[0-9]$/.test(e.key)) {
+              min.value = '';
+              min.dataset.rtArmOverwrite = '0';
+            }
+
+            if (e.key === 'Tab') {
+              e.preventDefault();
+              if (e.shiftKey) {
+                starter.focus();         // back
+              } else {
+                sec.focus();             // forward
+              }
+            } else if (e.key === 'Enter') {
+              e.preventDefault();
+              rt_startRally();
+              starter.focus();           // move back to starter after logic
+            } else if (e.key === ':' || e.key === '.' || e.key === ',') {
+              e.preventDefault();        // don't insert the character
+              focusAndSelect(sec);
+            }
+          };
+
+          // Seconds: Tab -> Starter (wrap), Shift+Tab -> Minutes, Enter starts + focus Starter
+          sec.onkeydown = (e) => {
+            if (sec.dataset.rtArmOverwrite === '1' && /^[0-9]$/.test(e.key)) {
+              sec.value = '';
+              sec.dataset.rtArmOverwrite = '0';
+            }
+
+            if (e.key === 'Tab') {
+              e.preventDefault();
+              if (e.shiftKey) {
+                min.focus();             // back
+              } else {
+                starter.focus();         // forward wrap
+              }
+            } else if (e.key === 'Enter') {
+              e.preventDefault();
+              rt_startRally();
+              starter.focus();           // move back to starter after logic
+            }
+          };
+
+          // Global ESC to stop audio (bind once)
+          if (!window.__rtEscBound) {
+            document.addEventListener('keydown', (e) => {
+              if (e.key === 'Escape') {
+                try { rt_stopAudio(); } catch(_) {}
+              }
+            });
+            window.__rtEscBound = true;
+          }
+        }
+
+        async function rt_tryTrigger50s(rally) { // (kept name for compatibility)
             if (!selectedGuildId) { displayMessage('Select a server and join a voice channel first (no guild selected).', 'warning'); return false; }
             try {
                 const response = await fetch('/api/play', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ guildId: selectedGuildId, sound: 'reinforce-en-50-0' })
+                    body: JSON.stringify({ guildId: selectedGuildId, sound: `${rt_voicePrefix}-${rt_firstCallSec}-0` })
                 });
                 const result = await response.json();
-                if (response.ok) { displayMessage(result.message || 'Triggered 50s reinforcement call.', 'success'); return true; }
+                if (response.ok) { displayMessage(result.message || `Triggered ${rt_firstCallSec}s call.`, 'success'); return true; }
                 displayMessage(result.error || 'Failed to trigger voice file.', 'danger'); return false;
             } catch(e) { console.error(e); displayMessage('Error calling /api/play', 'danger'); return false; }
         }
 
         function rt_tick() {
             const now = Date.now();
-            const threshold = RT_THRESHOLD_MS + rt_syncLeadMs;
+            const threshold = (rt_firstCallSec * 1000) + rt_syncLeadMs;
 
-            // Safety: if chain is active but anchor is gone and we've passed processedAt, reset
+            // Safety reset for chain
             if (rt_chain.active) {
                 const anchor = rt_rallies.find(r => r.id === rt_chain.anchorRallyId);
                 if (!anchor && now > rt_chain.processedAt + 5000) {
@@ -653,7 +913,7 @@
                 if (s1) s1.textContent = msToClock(launchRemain);
                 if (s2) s2.textContent = msToClock(landRemain);
 
-                // Crossing detection this tick
+                // Crossing detection this tick (first-call threshold)
                 const crossed = landRemain <= threshold && (r.lastLandMs == null || r.lastLandMs > threshold);
                 if (!r.triggered50 && crossed) crossers.push(r);
 
@@ -667,14 +927,14 @@
                 }
             });
 
-            // Earliest-only trigger, and only if no chain is active yet and none pending
+            // Earliest-only trigger if no chain active and nothing pending
             if (!rt_chain.active && !rt_pendingFirst && crossers.length) {
                 const earliest = crossers.sort((a,b) => a.hitAt - b.hitAt)[0];
-                rt_pendingFirst = true; // lock immediately to avoid double start if /api/play is slow
+                rt_pendingFirst = true;
                 rt_tryTrigger50s(earliest).then(ok => {
                     if (ok) {
-                        earliest.triggered50 = true;
-                        rt_chainStart(earliest);  // start chain only after audio started successfully
+                        earliest.triggered50 = true; // (compat: means “first call done”)
+                        rt_chainStart(earliest);
                         rt_save();
                     }
                 }).finally(() => { rt_pendingFirst = false; });
@@ -686,6 +946,20 @@
             rt_chainUpdate(now);
         }
         setInterval(rt_tick, 500);
+
+        // Stop audio & reset helpers
+        function rt_stopAudio(){
+            try { stopPlaying(); } catch(e) { console.error(e); }
+        }
+        async function rt_resetAll(){
+            try { await fetch('/api/stop', { method: 'POST' }); } catch(e) { /* ignore */ }
+            rt_rallies = [];
+            rt_chain = { active: false, processedAt: 0, anchorRallyId: null };
+            rt_pendingFirst = false;
+            rt_save();
+            rt_render();
+            displayMessage('All rallies cleared and audio stopped.', 'warning');
+        }
 
         // ===== Init =====
         function initRallyUI() { pl_load(); pl_render(); rt_renderStarterSelect(); rt_load(); rt_render(); }
@@ -700,8 +974,17 @@
             if (chLeadInit) chLeadInit.value = String(rt_chainLeadMs);
             const fbTolInit = document.getElementById('rtFallbackTol');
             if (fbTolInit) fbTolInit.value = String(rt_fallbackTolSec);
+            const vpInit = document.getElementById('rtVoicePrefix');
+            if (vpInit) vpInit.value = rt_voicePrefix;
+            const firstInit = document.getElementById('rtFirstCallSec');
+            if (firstInit) firstInit.value = String(rt_firstCallSec);
+            const firstLbl = document.getElementById('rtFirstSecDisplay');
+            if (firstLbl) firstLbl.textContent = `${rt_firstCallSec}s`;
+
             initRallyUI();
             rt_loadReinforceSounds();
+            rt_updateVoiceExample();
+            setupKeyboardUX(); // ensure handlers are bound on load
         });
         showSection('servers');
     </script>

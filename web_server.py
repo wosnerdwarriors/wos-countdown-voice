@@ -111,6 +111,37 @@ async def play_sound_api():
 	voice_client.play(audio_source)
 	return jsonify({"message": f"Playing {sound}.mp3 in {voice_client.channel.name}"}), 200
 
+@app.route('/api/stop', methods=['POST'])
+async def stop_playing_api():
+    """Stop any currently playing audio across all guilds the bot is in."""
+    stopped_in = []
+    for guild in bot.guilds:
+        vc = guild.voice_client
+        if vc and vc.is_playing():
+            vc.stop()
+            stopped_in.append(guild.name)
+    if stopped_in:
+        return jsonify({"message": f"Stopped playback in: {', '.join(stopped_in)}"}), 200
+    else:
+        return jsonify({"message": "Nothing was playing"}), 200
+
+
+@app.route('/api/leave', methods=['POST'])
+async def leave_channel_api():
+    """Disconnect the bot from any connected voice channels across all guilds."""
+    disconnected_in = []
+    for guild in bot.guilds:
+        vc = guild.voice_client
+        if vc:
+            if vc.is_playing():
+                vc.stop()
+            await vc.disconnect(force=True)
+            disconnected_in.append(guild.name)
+    if disconnected_in:
+        return jsonify({"message": f"Left voice channel in: {', '.join(disconnected_in)}"}), 200
+    else:
+        return jsonify({"error": "Bot is not connected to any voice channel"}), 400
+
 # API to fetch all log messages, optionally starting from a specified log ID
 @app.route('/api/logs', methods=['GET'])
 async def get_all_logs():

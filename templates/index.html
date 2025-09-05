@@ -223,6 +223,8 @@
 
         // Prevent multiple first-call triggers while /api/play pending
         let rt_pendingFirst = false;
+        // NEW: Gate to prevent re-triggering first-call while any rally is under threshold
+        let rt_windowActive = false;
 
         // Players (march times)
         let pl_players = []; // {id, name, secs, _editing?}
@@ -902,6 +904,8 @@
 
             let needsRender = false;
             const crossers = [];
+            // NEW: track whether any rally is currently under the threshold window
+            let anyUnder = false;
 
             rt_rallies.forEach(r => {
                 const launchRemain = r.launchEndAt - now;
@@ -912,6 +916,9 @@
                 const s2 = document.querySelector(`span[data-land-remaining="${r.id}"]`);
                 if (s1) s1.textContent = msToClock(launchRemain);
                 if (s2) s2.textContent = msToClock(landRemain);
+
+                // Threshold window tracking
+                if (landRemain <= threshold) anyUnder = true;
 
                 // Crossing detection this tick (first-call threshold)
                 const crossed = landRemain <= threshold && (r.lastLandMs == null || r.lastLandMs > threshold);
@@ -927,10 +934,11 @@
                 }
             });
 
-            // Earliest-only trigger if no chain active and nothing pending
-            if (!rt_chain.active && !rt_pendingFirst && crossers.length) {
+            // Earliest-only trigger if no chain active and nothing pending, and gate is not active
+            if (!rt_chain.active && !rt_pendingFirst && crossers.length && !rt_windowActive) {
                 const earliest = crossers.sort((a,b) => a.hitAt - b.hitAt)[0];
                 rt_pendingFirst = true;
+                rt_windowActive = true; // open gating window so new crossers won't retrigger 50s
                 rt_tryTrigger50s(earliest).then(ok => {
                     if (ok) {
                         earliest.triggered50 = true; // (compat: means “first call done”)
@@ -938,6 +946,11 @@
                         rt_save();
                     }
                 }).finally(() => { rt_pendingFirst = false; });
+            }
+
+            // Close gating window when no rally is under threshold anymore
+            if (!anyUnder) {
+                rt_windowActive = false;
             }
 
             if (needsRender) rt_render();
@@ -956,6 +969,7 @@
             rt_rallies = [];
             rt_chain = { active: false, processedAt: 0, anchorRallyId: null };
             rt_pendingFirst = false;
+            rt_windowActive = false; // also reset gate
             rt_save();
             rt_render();
             displayMessage('All rallies cleared and audio stopped.', 'warning');

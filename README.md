@@ -214,6 +214,7 @@ If you don’t see the command, **restart Discord**.
 
 ## 🛑 **Known Issues**
 - If **CPU performance is low**, countdowns may **go out of sync**. Consider running the bot on a **dedicated server**.
+- The bot may disconnect randomly. This is a known issue with the `discord.py` library. It can be resolved by installing the latest development version from the Git repository: `pip3 install --no-cache-dir --upgrade "git+https://github.com/Rapptz/discord.py.git"`
 
 ---
 

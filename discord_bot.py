@@ -22,6 +22,18 @@ logger = logging.getLogger(__name__)
 global_logs = {}
 log_counter = 0  # Counter to generate unique IDs for logs
 
+# Playback state tracking for seek/skip feature
+# Keys per guild id:
+# {
+#   guild_id: {
+#       'sound': <basename>,
+#       'start_monotonic': <time.monotonic when current ffmpeg stream started>,
+#       'base_offset': <seconds already skipped when (re)starting>,
+#       'duration': <optional cached duration seconds>
+#   }
+# }
+playback_state = {}
+
 # Configuration values
 bot_token = config.get("token")
 allowed_roles = config.get("roles-allowed-to-control-bot", [])
@@ -151,6 +163,8 @@ class ControlView(View):
 		join_button = Button(label="Join", style=discord.ButtonStyle.success, custom_id="join_button")
 		leave_button = Button(label="Leave", style=discord.ButtonStyle.danger, custom_id="leave_button")
 		stop_button = Button(label="Stop", style=discord.ButtonStyle.danger, custom_id="stop_button")
+		skip_back_button = Button(label="-1s", style=discord.ButtonStyle.secondary, custom_id="skip_back_button")
+		skip_forward_button = Button(label="+1s", style=discord.ButtonStyle.secondary, custom_id="skip_forward_button")
 
 		join_button.callback = self.join_callback
 		leave_button.callback = self.leave_callback
@@ -159,12 +173,18 @@ class ControlView(View):
 		self.add_item(join_button)
 		self.add_item(leave_button)
 		self.add_item(stop_button)
+		self.add_item(skip_back_button)
+		self.add_item(skip_forward_button)
 
-		# Limit to 22 sound buttons per message (since 3 control buttons are already used)
-		for sound in sorted_sounds[:22]:
+		# We now have 5 control buttons; Discord limit per action row set total components <=25
+		# So allow up to 20 sound buttons.
+		for sound in sorted_sounds[:20]:
 			button = Button(label=sound, style=discord.ButtonStyle.primary, custom_id=f"sound_{sound}")
 			button.callback = lambda interaction, s=sound: self.play_sound_callback(interaction, s)
 			self.add_item(button)
+
+		skip_back_button.callback = self.skip_back_callback
+		skip_forward_button.callback = self.skip_forward_callback
 
 
 	async def join_callback(self, interaction: discord.Interaction):
@@ -194,6 +214,24 @@ class ControlView(View):
 		log_message("stop_callback called", category="stop_callback")
 		await stop_sound(interaction.guild)
 		await interaction.response.send_message("Stopped the current sound.", ephemeral=True)
+
+	async def skip_back_callback(self, interaction: discord.Interaction):
+		log_message("skip_back_callback called", category="skip")
+		from discord_bot import skip_playback
+		ok = await skip_playback(interaction.guild, -1.0)
+		if not ok:
+			await interaction.response.send_message("Cannot skip - no active sound.", ephemeral=True)
+		else:
+			await interaction.response.defer()
+
+	async def skip_forward_callback(self, interaction: discord.Interaction):
+		log_message("skip_forward_callback called", category="skip")
+		from discord_bot import skip_playback
+		ok = await skip_playback(interaction.guild, 1.0)
+		if not ok:
+			await interaction.response.send_message("Cannot skip - no active sound.", ephemeral=True)
+		else:
+			await interaction.response.defer()
 
 	async def play_sound_callback(self, interaction: discord.Interaction, sound: str):
 		log_message(f"play_sound_callback called for sound: {sound}", category="play_sound_callback")
@@ -281,7 +319,51 @@ async def play_sound(sound: str, guild: discord.Guild):
 
 	audio_source = discord.FFmpegPCMAudio(sound_path)
 	voice_client.play(audio_source)
+	# record playback state
+	try:
+		playback_state[guild.id] = {
+			'sound': sound,
+			'start_monotonic': __import__('time').monotonic(),
+			'base_offset': 0.0
+		}
+	except Exception:
+		pass
 	log_message(f"Playing {sound}.mp3", category="play_sound")
+
+async def skip_playback(guild: discord.Guild, delta_seconds: float):
+	"""Skip forward/backward by delta_seconds (can be negative) restarting ffmpeg at new offset."""
+	voice_client = discord.utils.get(bot.voice_clients, guild=guild)
+	if not voice_client or not voice_client.is_playing():
+		return False
+	state = playback_state.get(guild.id)
+	if not state:
+		return False
+	import time, math, os
+	sound = state.get('sound')
+	if not sound:
+		return False
+	sound_path = f'sound-clips/{sound}.mp3'
+	if not os.path.isfile(sound_path):
+		return False
+	elapsed = max(0.0, time.monotonic() - state.get('start_monotonic', time.monotonic()))
+	current_offset = state.get('base_offset', 0.0) + elapsed
+	new_offset = current_offset + float(delta_seconds)
+	if new_offset < 0:
+		new_offset = 0.0
+	# stop current playback
+	voice_client.stop()
+	# build before_options with seek
+	seek_arg = f"-ss {new_offset:.2f}"
+	before = f"{seek_arg} -nostdin -loglevel quiet"
+	audio_source = discord.FFmpegPCMAudio(sound_path, before_options=before)
+	voice_client.play(audio_source)
+	playback_state[guild.id] = {
+		'sound': sound,
+		'start_monotonic': time.monotonic(),
+		'base_offset': new_offset
+	}
+	log_message(f"Skipped playback {delta_seconds:+.2f}s -> offset {new_offset:.2f}s", category="play_sound")
+	return True
 
 # Function to stop sound
 async def stop_sound(guild: discord.Guild):

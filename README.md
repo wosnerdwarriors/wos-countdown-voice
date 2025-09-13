@@ -225,3 +225,23 @@ This bot is still **new and under testing**.
 
 Happy Counting! 🎉
 
+---
+
+## 🧪 Automated Tests
+Basic unit tests cover rally storage logic (players, rallies, events, arrival pattern, pet expiration, long-poll behavior).
+
+### Run Tests
+```bash
+python -m unittest discover -s tests -p 'test_*.py' -v
+```
+
+### Isolated Data File
+Tests use a temporary file path passed directly to `RallyStore(data_file=...)` so they do not touch the production `data.json`.
+
+### Adding More Tests
+Create additional files in `tests/` named `test_*.py`. For async logic, subclass `unittest.IsolatedAsyncioTestCase` like the existing examples.
+
+### Forcing Flush (If Needed)
+`await store.force_flush()` ensures buffered writes are persisted immediately when asserting file contents.
+
+

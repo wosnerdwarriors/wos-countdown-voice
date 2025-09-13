@@ -1,25 +1,17 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>wos countdown</title>
-    <!-- Bootstrap CSS -->
-    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        .tab { cursor: pointer; }
-        .tab.active { font-weight: bold; }
-        .guild-tabs, .channels, .controls, .logs { margin-top: 20px; }
-        .hidden { display: none; }
-        .btn-sound { margin-right: 10px; }
-        .log-entry { font-family: monospace; }
-        .log-category { display: none; }
-        .log-category-active { display: table-row; }
-        .table-container { overflow-x: auto; }
-        .btn.active-category { background-color: green; color: white; }
-    </style>
-</head>
-<body>
-    <div class="container-fluid">
+{% extends 'base.html' %}
+{% block title %}Bot Control{% endblock %}
+{% block extra_css %}
+    .tab { cursor: pointer; }
+    .tab.active { font-weight: bold; }
+    .guild-tabs, .channels, .controls, .logs { margin-top: 20px; }
+    .btn-sound { margin-right: 10px; }
+    .log-entry { font-family: monospace; }
+    .log-category { display: none; }
+    .log-category-active { display: table-row; }
+    .table-container { overflow-x: auto; }
+    .btn.active-category { background-color: green; color: white; }
+{% endblock %}
+{% block content %}
         <h1 class="my-4 text-center">WOSNerd's countdown discord bot</h1>
 
         <!-- Message Box -->
@@ -72,12 +64,8 @@
                 </table>
             </div>
         </div>
-    </div>
-
-    <!-- Bootstrap JS, Popper.js, and jQuery -->
-    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.2/dist/umd/popper.min.js"></script>
-    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+{% endblock %}
+{% block extra_js %}
     <script>
         let selectedGuildId = null;
         let selectedChannelId = null;
@@ -368,5 +356,4 @@
         loadGuilds();
         showSection('servers');
     </script>
-</body>
-</html>
+{% endblock %}

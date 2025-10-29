@@ -38,8 +38,11 @@ else:
 
 
 app = Quart(__name__)
-app.config['DEBUG'] = True
+dbg_sections = config.get("debug_sections") or {}
+app.config['DEBUG'] = bool(dbg_sections.get('web', config.get('debug', False)))
 app.config["PROVIDE_AUTOMATIC_OPTIONS"] = True  # Add this line to prevent the KeyError
+# readiness event set by before_serving hook
+web_ready: asyncio.Event = asyncio.Event()
 
 @app.route('/')
 async def index():
@@ -64,6 +67,15 @@ async def rally_page():
 async def startup_audio_scheduler():
 	# ensure scheduler loop started
 	await audio_scheduler.start()
+
+
+@app.before_serving
+async def _signal_ready():
+	"""Signal that the Quart app has reached its before_serving stage (ready to accept requests)."""
+	try:
+		web_ready.set()
+	except Exception:
+		logger.exception("Failed to set web_ready event")
 
 @app.route('/api/rally/audio', methods=['GET'])
 async def audio_state():
@@ -408,14 +420,37 @@ async def join_channel():
 @app.route('/api/play', methods=['POST'])
 async def play_sound_api():
 	data = await request.get_json()
-	guild_id = int(data.get("guildId"))
+	guild_id = data.get("guildId")
+	channel_id = data.get("channelId")
 	sound = data.get("sound")
+
+	if guild_id is None:
+		return jsonify({"error": "guildId required"}), 400
+	try:
+		guild_id = int(guild_id)
+	except Exception:
+		return jsonify({"error": "invalid guildId"}), 400
 
 	guild = discord.utils.get(bot.guilds, id=guild_id)
 	if not guild:
 		return jsonify({"error": "Guild not found"}), 404
 
 	voice_client = guild.voice_client
+	# If not connected, but channelId provided, try to join that channel
+	if not voice_client and channel_id is not None:
+		try:
+			cid = int(channel_id)
+		except Exception:
+			cid = None
+		if cid:
+			ch = discord.utils.get(guild.channels, id=cid)
+			if ch and isinstance(ch, discord.VoiceChannel):
+				try:
+					await ch.connect()
+					voice_client = guild.voice_client
+				except Exception as e:
+					return jsonify({"error": f"Failed to connect to channel: {e}"}), 500
+
 	if not voice_client:
 		return jsonify({"error": "Bot is not connected to a voice channel"}), 400
 
@@ -575,4 +610,35 @@ async def rally_pattern():
 
 
 async def main_web():
-	await app.run_task(host=webserver_host, port=webserver_port)
+	# Start the Quart server in a background task, then confirm it's accepting connections.
+	try:
+		# No external pre-bind test here: rely on the in-process readiness signal
+		# (using @app.before_serving -> web_ready) to determine success/failure.
+		msg = f"Starting web server on {webserver_host}:{webserver_port}"
+		try: log_message(msg, category="web")
+		except Exception: logger.info(msg)
+
+		server_task = asyncio.create_task(app.run_task(host=webserver_host, port=webserver_port))
+
+		# Wait for the in-process readiness signal (set by @app.before_serving).
+		# This is deterministic and avoids probing the TCP socket externally.
+		try:
+			await asyncio.wait_for(web_ready.wait(), timeout=5.0)
+		except Exception as e:
+			# server didn't signal readiness in time; cancel and surface
+			try:
+				server_task.cancel()
+			except Exception:
+				pass
+			raise RuntimeError(f"web server failed to become ready on {webserver_host}:{webserver_port}: {e}")
+
+		try:
+			log_message(f"Web server signalled readiness on {webserver_host}:{webserver_port}", category="web")
+		except Exception:
+			logger.info(f"Web server signalled readiness on {webserver_host}:{webserver_port}")
+
+		# server task running; await it indefinitely
+		await server_task
+	except Exception:
+		# ensure exceptions propagate to caller
+		raise

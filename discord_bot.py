@@ -12,9 +12,9 @@ import re
 with open("config.json", "r") as config_file:
 	config = json.load(config_file)
 
-# Configure logging
+# Configure logging (start at INFO; elevate selectively below)
 logging.basicConfig(
-	level=logging.DEBUG,
+	level=logging.INFO,
 	format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
 	handlers=[logging.StreamHandler()]
 )
@@ -33,6 +33,20 @@ log_counter = 0  # Counter to generate unique IDs for logs
 #   }
 # }
 playback_state = {}
+
+def _apply_logging_config():
+	sections = config.get('debug_sections') or {}
+	global_debug = bool(config.get('debug', False))
+	# Control discord library verbosity
+	discord_debug = sections.get('discord', global_debug)
+	lib_level = logging.DEBUG if discord_debug else logging.WARNING
+	for name in ('discord', 'discord.client', 'discord.gateway', 'discord.state', 'discord.http'):
+		logging.getLogger(name).setLevel(lib_level)
+	# Our app logger: allow debug if any non-discord section wants debug
+	any_app_debug = any(v for k,v in sections.items() if k != 'discord') or global_debug
+	logging.getLogger('discord_bot').setLevel(logging.DEBUG if any_app_debug else logging.INFO)
+
+_apply_logging_config()
 
 # Configuration values
 bot_token = config.get("token")
@@ -58,6 +72,17 @@ def sort_sound_files(files):
 	return sorted(files, key=extract_number)
 
 # Helper function to log messages
+def is_debug_enabled(category: str) -> bool:
+	# category keys map to config.debug_sections; fallback to global debug boolean
+	sections = config.get("debug_sections") or {}
+	if category in sections:
+		return bool(sections[category])
+	# allow some grouping heuristics
+	for key in sections:
+		if category.startswith(key):
+			return bool(sections[key])
+	return bool(config.get("debug", False))
+
 def log_message(message, severity="info", category="catchall"):
 	global log_counter
 	log_id = log_counter
@@ -80,7 +105,8 @@ def log_message(message, severity="info", category="catchall"):
 
 
 	if severity.lower() == "debug":
-		logger.debug(message)
+		if is_debug_enabled(category):
+			logger.debug(message)
 	elif severity.lower() == "info":
 		logger.info(message)
 	elif severity.lower() == "warning":
@@ -213,7 +239,8 @@ class ControlView(View):
 	async def stop_callback(self, interaction: discord.Interaction):
 		log_message("stop_callback called", category="stop_callback")
 		await stop_sound(interaction.guild)
-		await interaction.response.send_message("Stopped the current sound.", ephemeral=True)
+		# Acknowledge the interaction without sending a visible message
+		await interaction.response.defer()
 
 	async def skip_back_callback(self, interaction: discord.Interaction):
 		log_message("skip_back_callback called", category="skip")

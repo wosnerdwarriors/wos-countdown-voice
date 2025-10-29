@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import logging
 import os
+import asyncio
 import discord
 from discord.ext import commands
 from discord.ui import Button, View
@@ -104,7 +105,12 @@ def log_message(message, severity="info", category="catchall"):
 		if is_debug_enabled(category):
 			logger.debug(message)
 	elif severity.lower() == "info":
-		logger.info(message)
+		# Only emit INFO level logs to the main logger when that
+		# category's debug section is explicitly enabled. This keeps
+		# normal runs quiet while allowing per-category verbosity when
+		# requested in the config.
+		if is_debug_enabled(category):
+			logger.info(message)
 	elif severity.lower() == "warning":
 		logger.warning(message)
 	elif severity.lower() == "error":
@@ -123,8 +129,20 @@ class CustomLogHandler(logging.Handler):
 		log_message(message, severity=severity, category=record.name)
 
 discord_logger = logging.getLogger('discord')
-discord_logger.addHandler(CustomLogHandler())
-discord_logger.setLevel(logging.DEBUG)
+# Attach the custom handler only when Discord debug is enabled so we
+# don't mirror all library INFO/DEBUG traffic into our application logs
+# during normal runs.
+if is_debug_section_enabled(config, DebugSection.DISCORD):
+	discord_logger.addHandler(CustomLogHandler())
+	discord_logger.setLevel(logging.DEBUG)
+else:
+	# Keep discord library noise to warnings/errors unless explicitly
+	# requested in config.
+	# Remove any existing custom handlers if present.
+	for h in list(discord_logger.handlers):
+		if isinstance(h, CustomLogHandler):
+			discord_logger.removeHandler(h)
+	discord_logger.setLevel(logging.WARNING)
 
 # Define the bot class
 class MyBot(commands.Bot):
@@ -445,4 +463,8 @@ async def purge_and_repost_controls():
 		await post_controls_helper(channel, existing_message)
 
 async def main_bot():
-	await bot.start(bot_token)
+	try:
+		await bot.start(bot_token)
+	except asyncio.CancelledError:
+		await bot.close()
+		raise

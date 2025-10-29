@@ -157,6 +157,10 @@ class AudioScheduler:
 
     async def _run(self):
         log_message("Audio scheduler loop started", category="audio_scheduler")
+        # Internal control exception used to signal a wake/recompute without
+        # conflating with asyncio.CancelledError which indicates real shutdown.
+        class _RecomputeNow(Exception):
+            pass
         while True:
             try:
                 await self._recompute_schedule()
@@ -177,16 +181,21 @@ class AudioScheduler:
                     to_wait = min(1.0, remaining)
                     try:
                         await asyncio.wait_for(self._wake_event.wait(), timeout=to_wait)
-                        # woke early; recompute schedule
+                        # woke early; recompute schedule — use local exception so
+                        # we don't accidentally swallow asyncio.CancelledError.
                         self._wake_event.clear()
-                        raise asyncio.CancelledError  # use exception to break to outer recompute
+                        raise _RecomputeNow()
                     except asyncio.TimeoutError:
                         pass
                 # time reached; perform playback
                 await self._fire_if_due()
-            except asyncio.CancelledError:
-                # loop to recompute quickly
+            except _RecomputeNow:
+                # normal internal control flow to recompute schedule
                 continue
+            except asyncio.CancelledError:
+                # Real cancellation — stop the loop quietly and allow cleanup by caller
+                logger.debug("Audio scheduler received CancelledError; exiting loop")
+                break
             except Exception as e:
                 logger.error("Audio scheduler loop error: %s", e)
                 await asyncio.sleep(1)

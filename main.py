@@ -146,6 +146,10 @@ async def main():
 	bot_task = asyncio.create_task(main_bot(), name="bot_task")
 	web_task = asyncio.create_task(main_web(), name="web_task")
 
+	# Determine whether we should be quiet on shutdown: when no debug sections
+	# are enabled we want a single-line shutdown message only.
+	quiet_shutdown = not _debug_enabled(None)
+
 	# Heartbeat to show loop is alive
 	heartbeat_task = None
 	if _debug_enabled(DebugSection.HEARTBEAT):
@@ -156,13 +160,17 @@ async def main():
 		heartbeat_task = asyncio.create_task(heartbeat(), name="heartbeat")
 
 	def dump_state(tag):
-		print_safe(f"[DUMP:{tag}] --- TASKS ---")
-		for t in asyncio.all_tasks():
-			print_safe(f"  * {t.get_name()} done={t.done()} cancelled={t.cancelled()} repr={t}")
-		print_safe(f"[DUMP:{tag}] --- THREADS ---")
-		for th in threading.enumerate():
-			print_safe(f"  * Thread name={th.name} daemon={th.daemon}")
-		print_safe(f"[DUMP:{tag}] --------------")
+		# Only emit the full dump if heartbeat or perf debugging is enabled.
+		if _debug_enabled(DebugSection.HEARTBEAT) or _debug_enabled(DebugSection.PERF):
+			print_safe(f"[DUMP:{tag}] --- TASKS ---")
+			for t in asyncio.all_tasks():
+				print_safe(f"  * {t.get_name()} done={t.done()} cancelled={t.cancelled()} repr={t}")
+			print_safe(f"[DUMP:{tag}] --- THREADS ---")
+			for th in threading.enumerate():
+				print_safe(f"  * Thread name={th.name} daemon={th.daemon}")
+			print_safe(f"[DUMP:{tag}] --------------")
+		else:
+			print_safe(f"[DUMP:{tag}] suppressed; enable heartbeat/perf debug for full dump")
 
 	try:
 		# Wait until one finishes (error or normal). If one errors, cancel the others.
@@ -186,15 +194,39 @@ async def main():
 		# If we get here both finished cleanly (unlikely)
 		print_safe("[INFO] Both primary tasks ended normally")
 	except asyncio.CancelledError:
-		print_safe("[SHUTDOWN] main() received cancellation")
-		dump_state("cancelled")
-		for t in (bot_task, web_task, heartbeat_task):
-			if t and not t.done():
-				print_safe(f"[CANCEL] {t.get_name()}")
-				t.cancel()
-		await asyncio.gather(*(t for t in (bot_task, web_task, heartbeat_task) if t), return_exceptions=True)
-		dump_state("post-cancel-gather")
-		raise
+		if quiet_shutdown:
+			# Perform minimal (silent) shutdown: request web server shutdown
+			try:
+				from web_server import web_shutdown_event
+				if web_shutdown_event is not None and not web_shutdown_event.is_set():
+					web_shutdown_event.set()
+			except Exception:
+				pass
+			for t in (bot_task, web_task, heartbeat_task):
+				if t and not t.done():
+					t.cancel()
+			await asyncio.gather(*(t for t in (bot_task, web_task, heartbeat_task) if t), return_exceptions=True)
+			# no prints; runner will emit the single shutdown line
+			raise
+		else:
+			print_safe("[SHUTDOWN] main() received cancellation")
+			dump_state("cancelled")
+			# Signal the web server to shutdown via its shutdown trigger (if present)
+			try:
+				from web_server import web_shutdown_event
+				if web_shutdown_event is not None and not web_shutdown_event.is_set():
+					print_safe("[CANCEL] setting web shutdown event")
+					web_shutdown_event.set()
+			except Exception:
+				# ignore if web_server is not importable or the symbol is missing
+				pass
+			for t in (bot_task, web_task, heartbeat_task):
+				if t and not t.done():
+					print_safe(f"[CANCEL] {t.get_name()}")
+					t.cancel()
+			await asyncio.gather(*(t for t in (bot_task, web_task, heartbeat_task) if t), return_exceptions=True)
+			dump_state("post-cancel-gather")
+			raise
 	finally:
 		# final state snapshot
 		dump_state("main-final")
@@ -222,29 +254,49 @@ def _run():
 
 	# Signal handlers (Unix only; on Windows SIGTERM may not be available):
 	def _cancel():
-		print_safe("\n[SIGNAL] received, initiating cancellation...")
+		if _debug_enabled(None):
+			print_safe("\n[SIGNAL] received, initiating cancellation...")
 		if not main_task.done():
 			main_task.cancel()
+
+	def _cancel_from_signal(signum, frame):  # pragma: no cover - signal bridge
+		loop.call_soon_threadsafe(_cancel)
+
 	for sig in (getattr(signal, 'SIGINT', None), getattr(signal, 'SIGTERM', None)):
 		if sig is not None:
 			try:
 				loop.add_signal_handler(sig, _cancel)
-			except NotImplementedError:
-				# Platform (e.g., Windows) may not support this
-				pass
+			except (NotImplementedError, RuntimeError, ValueError):
+				# Fallback when event loop signal handlers are unavailable (e.g. debugpy)
+				signal.signal(sig, _cancel_from_signal)
 	try:
 		loop.run_until_complete(main_task)
+	except asyncio.CancelledError:
+		if _debug_enabled(None):
+			print_safe("[RUNNER] main task cancelled; exiting")
+		else:
+			# Minimal message when quiet
+			print_safe("[RUNNER] shutting down.")
 	except KeyboardInterrupt:
-		print_safe("\n[KEYBOARD] KeyboardInterrupt fallback")
+		if _debug_enabled(None):
+			print_safe("\n[KEYBOARD] KeyboardInterrupt fallback")
+		else:
+			print_safe("[RUNNER] shutting down.")
 		if not main_task.done():
 			main_task.cancel()
 			loop.run_until_complete(main_task)
 	finally:
-		print_safe("[RUNNER] final task/thread dump before closing loop")
-		for t in asyncio.all_tasks(loop):
-			print_safe(f"  loop-final-task name={t.get_name()} done={t.done()} cancelled={t.cancelled()} {t}")
-		for th in threading.enumerate():
-			print_safe(f"  loop-final-thread name={th.name} daemon={th.daemon}")
+		# Print a short shutdown summary by default. If heartbeat or perf
+		# debugging is enabled, emit the full task/thread dump for diagnosis.
+		if _debug_enabled(DebugSection.HEARTBEAT) or _debug_enabled(DebugSection.PERF):
+			print_safe("[RUNNER] final task/thread dump before closing loop")
+			for t in asyncio.all_tasks(loop):
+				print_safe(f"  loop-final-task name={t.get_name()} done={t.done()} cancelled={t.cancelled()} {t}")
+			for th in threading.enumerate():
+				print_safe(f"  loop-final-thread name={th.name} daemon={th.daemon}")
+		else:
+			# Minimal one-line shutdown summary when not debugging
+			print_safe("[RUNNER] shutting down.")
 		pending = [t for t in asyncio.all_tasks(loop) if t is not main_task and not t.done()]
 		for p in pending:
 			p.cancel()

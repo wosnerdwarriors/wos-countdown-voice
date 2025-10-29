@@ -2,6 +2,7 @@ from quart import Quart, jsonify, request, render_template, send_file
 import os
 import logging
 import asyncio
+import contextlib
 from discord_bot import bot, play_sound, global_logs, log_message, stop_sound
 from rally_audio import audio_scheduler
 import discord
@@ -12,6 +13,7 @@ import re
 import tempfile
 from gtts import gTTS
 import pyttsx3
+from config_enums import DebugSection, is_debug_section_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -38,11 +40,50 @@ else:
 
 
 app = Quart(__name__)
-dbg_sections = config.get("debug_sections") or {}
-app.config['DEBUG'] = bool(dbg_sections.get('web', config.get('debug', False)))
+
+
+def is_debug_enabled(section=None):
+	return is_debug_section_enabled(config, section)
+
+app.config['DEBUG'] = is_debug_enabled(DebugSection.WEB)
 app.config["PROVIDE_AUTOMATIC_OPTIONS"] = True  # Add this line to prevent the KeyError
 # readiness event set by before_serving hook
 web_ready: asyncio.Event = asyncio.Event()
+# Optional shutdown event that callers (like main.py) can set to request
+# Hypercorn to stop via the shutdown_trigger. If None, `main_web` will
+# create one for its own use and assign it here so callers can access it.
+web_shutdown_event: asyncio.Event | None = None
+
+class _HypercornTrafficFilter(logging.Filter):
+	"""Filter out routine HTTP request logs unless web_access debugging is enabled."""
+
+	_methods = ("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD")
+
+	def filter(self, record: logging.LogRecord) -> bool:
+		if is_debug_enabled(DebugSection.WEB_ACCESS):
+			return True
+		msg = record.getMessage()
+		if not msg:
+			return True
+		return not any(f"{method} /" in msg for method in self._methods)
+
+_hypercorn_access_logger = logging.getLogger("hypercorn.access")
+_hypercorn_access_logger.propagate = False
+_hypercorn_access_logger.addFilter(_HypercornTrafficFilter())
+if is_debug_enabled(DebugSection.WEB_ACCESS):
+	_hypercorn_access_logger.disabled = False
+	_hypercorn_access_logger.setLevel(logging.INFO)
+else:
+	_hypercorn_access_logger.disabled = True
+
+_hypercorn_error_logger = logging.getLogger("hypercorn.error")
+_hypercorn_error_logger.propagate = False
+_hypercorn_error_logger.addFilter(_HypercornTrafficFilter())
+# Ensure Hypercorn error/info logs are available at INFO level so the
+# standard "Running on http://... (CTRL + C to quit)" message is visible
+# on server startup even when web access debugging is disabled.
+_hypercorn_error_logger.disabled = False
+_hypercorn_error_logger.setLevel(logging.INFO)
 
 @app.route('/')
 async def index():
@@ -73,7 +114,20 @@ async def startup_audio_scheduler():
 async def _signal_ready():
 	"""Signal that the Quart app has reached its before_serving stage (ready to accept requests)."""
 	try:
+		# Notify readiness for in-process callers
 		web_ready.set()
+		# Emit a startup/info message similar to Hypercorn's usual output so
+		# users see the listening URL in the console. Use the hypercorn.error
+		# logger at INFO level to mimic the previous behavior.
+		try:
+			msg = f"Running on http://{webserver_host}:{webserver_port} (CTRL + C to quit)"
+			# Print a short process-style line (timestamp + pid) to stdout as the
+			# gunicorn/hypercorn runner did previously. Keep this minimal.
+			print(msg)
+			_hypercorn_error_logger.info(msg)
+		except Exception:
+			# Fallback to module logger
+			logger.info(f"Web ready on {webserver_host}:{webserver_port}")
 	except Exception:
 		logger.exception("Failed to set web_ready event")
 
@@ -611,14 +665,22 @@ async def rally_pattern():
 
 async def main_web():
 	# Start the Quart server in a background task, then confirm it's accepting connections.
+	# Use an explicit shutdown event and pass its wait() as the shutdown_trigger
+	# to Hypercorn so we control server shutdown (avoid conflicts with Hypercorn's
+	# own signal handlers when the application installs its own handlers).
+	global web_shutdown_event
+	web_shutdown_event = asyncio.Event()
+	server_task = asyncio.create_task(
+		app.run_task(host=webserver_host, port=webserver_port, shutdown_trigger=web_shutdown_event.wait)
+	)
 	try:
 		# No external pre-bind test here: rely on the in-process readiness signal
 		# (using @app.before_serving -> web_ready) to determine success/failure.
 		msg = f"Starting web server on {webserver_host}:{webserver_port}"
-		try: log_message(msg, category="web")
-		except Exception: logger.info(msg)
-
-		server_task = asyncio.create_task(app.run_task(host=webserver_host, port=webserver_port))
+		try:
+			log_message(msg, category="web")
+		except Exception:
+			logger.info(msg)
 
 		# Wait for the in-process readiness signal (set by @app.before_serving).
 		# This is deterministic and avoids probing the TCP socket externally.
@@ -626,10 +688,7 @@ async def main_web():
 			await asyncio.wait_for(web_ready.wait(), timeout=5.0)
 		except Exception as e:
 			# server didn't signal readiness in time; cancel and surface
-			try:
-				server_task.cancel()
-			except Exception:
-				pass
+			server_task.cancel()
 			raise RuntimeError(f"web server failed to become ready on {webserver_host}:{webserver_port}: {e}")
 
 		try:
@@ -639,6 +698,15 @@ async def main_web():
 
 		# server task running; await it indefinitely
 		await server_task
+	except asyncio.CancelledError:
+		# Request Hypercorn to shutdown first so it can stop accepting new
+		# connections and unblock any awaits inside the server.
+		if not web_shutdown_event.is_set():
+			web_shutdown_event.set()
+		server_task.cancel()
+		with contextlib.suppress(asyncio.CancelledError):
+			await server_task
+		raise
 	except Exception:
-		# ensure exceptions propagate to caller
+		server_task.cancel()
 		raise

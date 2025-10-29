@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 import asyncio
+import signal
 import importlib
 import sys
 import shutil
 import platform
 import os
 import subprocess
+import threading
+import time
+import argparse
 
 REQUIREMENTS_FILE = "requirements.txt"
 SYSTEM_DEPENDENCIES = ["ffmpeg"]  # Add more if needed
@@ -100,24 +104,152 @@ def check_system_dependencies():
 		sys.exit(1)
 
 
+def parse_args():
+	parser = argparse.ArgumentParser(description="WOS Countdown Voice")
+	parser.add_argument("--config", default="config.json", help="Path to config file (default: config.json)")
+	parser.add_argument("--asyncio-debug", dest="asyncio_debug", action="store_true", help="Enable asyncio loop debug mode")
+	parser.add_argument("--no-asyncio-debug", dest="asyncio_debug", action="store_false", help="Disable asyncio loop debug mode")
+	parser.set_defaults(asyncio_debug=None)
+	return parser.parse_args()
+
+
+_parsed_args = None
+_loaded_config = None
+
+def load_config(path: str):
+	global _loaded_config
+	if not os.path.exists(path):
+		print_safe(f"❌ Config file not found: {path}")
+		sys.exit(2)
+	import json as _json
+	with open(path, 'r', encoding='utf-8') as f:
+		_loaded_config = _json.load(f)
+	return _loaded_config
+
+
 async def main():
 	# Run checks before importing other modules
 	check_python_modules()
 	check_system_dependencies()
 
-	# Now we safely import everything
+	# Import after dependency checks
 	from discord_bot import main_bot
 	from web_server import main_web
 
-	# Start bot and web server
-	await asyncio.gather(
-		main_bot(),
-		main_web()
-	)
+	# Launch both tasks and keep references for cancellation
+	bot_task = asyncio.create_task(main_bot(), name="bot_task")
+	web_task = asyncio.create_task(main_web(), name="web_task")
+
+	# Heartbeat to show loop is alive
+	async def heartbeat():
+		while True:
+			print_safe(f"[HB] loop alive {time.strftime('%H:%M:%S')} tasks={len(asyncio.all_tasks())}")
+			await asyncio.sleep(5)
+	heartbeat_task = asyncio.create_task(heartbeat(), name="heartbeat")
+
+	tasks = {bot_task, web_task, heartbeat_task}
+
+	def dump_state(tag):
+		print_safe(f"[DUMP:{tag}] --- TASKS ---")
+		for t in asyncio.all_tasks():
+			print_safe(f"  * {t.get_name()} done={t.done()} cancelled={t.cancelled()} repr={t}")
+		print_safe(f"[DUMP:{tag}] --- THREADS ---")
+		for th in threading.enumerate():
+			print_safe(f"  * Thread name={th.name} daemon={th.daemon}")
+		print_safe(f"[DUMP:{tag}] --------------")
+
+	try:
+		# Wait until one finishes (error or normal). If one errors, cancel the others.
+		done, pending = await asyncio.wait({bot_task, web_task}, return_when=asyncio.FIRST_EXCEPTION)
+		for d in done:
+			exc = d.exception()
+			if exc:
+				print_safe(f"❌ Startup task failed: {exc}")
+				dump_state("startup-fail-before-cancel")
+				for p in pending:
+					print_safe(f"[CANCEL] cancelling {p.get_name()}")
+					p.cancel()
+				await asyncio.gather(*pending, return_exceptions=True)
+				dump_state("startup-fail-after-cancel")
+				# stop heartbeat
+				heartbeat_task.cancel()
+				await asyncio.gather(heartbeat_task, return_exceptions=True)
+				print_safe("[EXIT] calling sys.exit(3)")
+				sys.exit(3)
+		# If we get here both finished cleanly (unlikely)
+		print_safe("[INFO] Both primary tasks ended normally")
+	except asyncio.CancelledError:
+		print_safe("[SHUTDOWN] main() received cancellation")
+		dump_state("cancelled")
+		for t in {bot_task, web_task, heartbeat_task}:
+			if not t.done():
+				print_safe(f"[CANCEL] {t.get_name()}")
+				t.cancel()
+		await asyncio.gather(bot_task, web_task, heartbeat_task, return_exceptions=True)
+		dump_state("post-cancel-gather")
+		raise
+	finally:
+		# final state snapshot
+		dump_state("main-final")
+
+
+
+def _resolve_asyncio_debug_flag():
+	# precedence: CLI flag (if set) > config file key > default False
+	if _parsed_args and _parsed_args.asyncio_debug is not None:
+		return _parsed_args.asyncio_debug
+	if isinstance(_loaded_config, dict) and 'asyncio_debug' in _loaded_config:
+		return bool(_loaded_config['asyncio_debug'])
+	return False
+
+
+def _run():
+	"""Custom runner with signal handling for clean Ctrl+C shutdown."""
+	loop = asyncio.new_event_loop()
+	asyncio.set_event_loop(loop)
+	if _resolve_asyncio_debug_flag():
+		print_safe("[DEBUG] asyncio debug mode enabled")
+		loop.set_debug(True)
+
+	main_task = loop.create_task(main(), name="main_entry")
+
+	# Signal handlers (Unix only; on Windows SIGTERM may not be available):
+	def _cancel():
+		print_safe("\n[SIGNAL] received, initiating cancellation...")
+		if not main_task.done():
+			main_task.cancel()
+	for sig in (getattr(signal, 'SIGINT', None), getattr(signal, 'SIGTERM', None)):
+		if sig is not None:
+			try:
+				loop.add_signal_handler(sig, _cancel)
+			except NotImplementedError:
+				# Platform (e.g., Windows) may not support this
+				pass
+	try:
+		loop.run_until_complete(main_task)
+	except KeyboardInterrupt:
+		print_safe("\n[KEYBOARD] KeyboardInterrupt fallback")
+		if not main_task.done():
+			main_task.cancel()
+			loop.run_until_complete(main_task)
+	finally:
+		print_safe("[RUNNER] final task/thread dump before closing loop")
+		for t in asyncio.all_tasks(loop):
+			print_safe(f"  loop-final-task name={t.get_name()} done={t.done()} cancelled={t.cancelled()} {t}")
+		for th in threading.enumerate():
+			print_safe(f"  loop-final-thread name={th.name} daemon={th.daemon}")
+		pending = [t for t in asyncio.all_tasks(loop) if t is not main_task and not t.done()]
+		for p in pending:
+			p.cancel()
+		if pending:
+			loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+		loop.close()
 
 if __name__ == "__main__":
 	# Ensure UTF-8 encoding on Windows
 	if os.name == "nt":
 		sys.stdout.reconfigure(encoding="utf-8")
 
-	asyncio.run(main())
+	_parsed_args = parse_args()
+	load_config(_parsed_args.config)
+	_run()

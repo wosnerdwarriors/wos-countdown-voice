@@ -37,6 +37,10 @@
               <option value="active">active</option>
             </select>
           </div>
+          <div class="form-group mb-2">
+            <label>Pet remaining (sec) <span class="small-muted">(default 7200 = 2h)</span></label>
+            <input class="form-control form-control-sm" name="pet_remaining" type="number" min="0" value="7200" />
+          </div>
           <button class="btn btn-primary btn-sm w-100" type="submit">Create</button>
         </form>
       </div>
@@ -288,8 +292,12 @@ function renderPlayers(){
           <span class="march-with ${active? 'active-march': ''}">${p.march_time_with_pets_seconds||'-'}</span>
         </span>
         <div class="d-none edit-block mt-1">
+          <label class="small mb-0">No pets (sec)</label>
           <input type="number" min="0" class="form-control form-control-sm edit-march-no" value="${p.march_time_no_pets_seconds}">
+          <label class="small mt-1 mb-0">With pets (sec)</label>
           <input type="number" min="0" class="form-control form-control-sm edit-march-with mt-1" value="${p.march_time_with_pets_seconds}">
+          <label class="small mt-1 mb-0">Pet remaining (sec)</label>
+          <input type="number" min="0" class="form-control form-control-sm edit-pet-remaining mt-1" value="${(p.pet_status==='active' ? Math.max((p.pet_activated_at||0) + 7200 - Math.floor(Date.now()/1000), 7200) : 7200)}">
         </div>
         <div class="small text-muted pet-remaining" data-pid="${pid}"></div>
       </td>
@@ -431,6 +439,17 @@ async function savePlayerEdit(tr,pid){
   const body = { name };
   if(marchNo !== null) body.march_time_no_pets_seconds = marchNo; 
   if(marchWith !== null) body.march_time_with_pets_seconds = marchWith; 
+  // pet remaining (seconds) input in edit block
+  const petRemainingEl = tr.querySelector('.edit-pet-remaining');
+  if(petRemainingEl){
+    const petRemainingRaw = petRemainingEl.value;
+    if(petRemainingRaw !== '' && !isNaN(parseInt(petRemainingRaw))){
+      const petRemaining = parseInt(petRemainingRaw);
+      // pet_activated_at + 7200 == now + petRemaining
+      body.pet_activated_at = Math.floor(Date.now()/1000) + petRemaining - 7200;
+      body.pet_status = petRemaining > 0 ? 'active' : 'none';
+    }
+  }
   await fetch(`/api/players/${pid}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
   await loadSnapshot();
 }
@@ -496,6 +515,13 @@ async function createPlayer(form){
     march_time_with_pets_seconds: parseInt(fd.get('march_with')),
     pet_status: fd.get('pet_status')
   };
+  // pet_remaining (seconds) - default 7200
+  const petRemaining = parseInt(fd.get('pet_remaining') || '7200');
+  if(!isNaN(petRemaining) && petRemaining > 0 && fd.get('pet_status') === 'active'){
+    body.pet_activated_at = Math.floor(Date.now()/1000) + petRemaining - 7200;
+  } else {
+    body.pet_activated_at = 0;
+  }
   const r = await fetch('/api/players', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
   if(r.ok){ form.reset(); await loadSnapshot(); }
 }
@@ -629,10 +655,11 @@ async function refreshAudioLists(){
   // sounds
   const sr = await fetch('/api/sounds'); const sounds = await sr.json();
   const sSel = document.getElementById('audioSound'); sSel.innerHTML='';
-  sounds.forEach(s=>{ const o=document.createElement('option'); o.value=s; o.textContent=s; sSel.appendChild(o); });
-  const pSel = document.getElementById('audioPrefixSound'); if(pSel){ pSel.innerHTML=''; const none=document.createElement('option'); none.value=''; none.textContent='(none)'; pSel.appendChild(none); sounds.forEach(s=>{ const o=document.createElement('option'); o.value=s; o.textContent=s; pSel.appendChild(o); }); }
+  // API returns an array of objects {name, filename, bytes}
+  sounds.forEach(s=>{ const o=document.createElement('option'); o.value=s.name; o.textContent=s.name; sSel.appendChild(o); });
+  const pSel = document.getElementById('audioPrefixSound'); if(pSel){ pSel.innerHTML=''; const none=document.createElement('option'); none.value=''; none.textContent='(none)'; pSel.appendChild(none); sounds.forEach(s=>{ const o=document.createElement('option'); o.value=s.name; o.textContent=s.name; pSel.appendChild(o); }); }
   const mSel = document.getElementById('manualSound'); mSel.innerHTML='';
-  sounds.forEach(s=>{ const o=document.createElement('option'); o.value=s; o.textContent=s; mSel.appendChild(o); });
+  sounds.forEach(s=>{ const o=document.createElement('option'); o.value=s.name; o.textContent=s.name; mSel.appendChild(o); });
   // guilds
   const gr = await fetch('/api/guilds'); const guilds = await gr.json();
   const gSel = document.getElementById('audioGuild'); gSel.innerHTML='';
@@ -686,9 +713,12 @@ async function manualPlay(){
   // ensure connected first
   await fetch('/api/rally/audio/connect',{method:'POST'});
   const gid = document.getElementById('audioGuild').value;
+  const cid = document.getElementById('audioChannel') ? document.getElementById('audioChannel').value : null;
   const sound = document.getElementById('manualSound').value || document.getElementById('audioSound').value;
   if(!gid || !sound) return;
-  await fetch('/api/play', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({guildId: parseInt(gid), sound})});
+  const body = { guildId: parseInt(gid), sound };
+  if(cid) body.channelId = parseInt(cid);
+  await fetch('/api/play', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
 }
 </script>
 {% endblock %}

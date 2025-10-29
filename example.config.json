@@ -3,9 +3,20 @@
     "webserver-port": 5544,
     "webserver-host": "127.0.0.1",
     "roles-allowed-to-control-bot": ["countdown-controller", "Admin"],
-    "debug": true ,
+    "debug": false,
+    "debug_sections": {
+        "web": false,
+        "discord": true,
+        "audio_scheduler": false,
+        "rally_store": false,
+        "tts": false,
+        "generation": false,
+        "playback_seek": false,
+        "db": false,
+        "perf": false
+    },
     "log-messages-to-keep": 0, 
     "log-messages-to-keep_comment": "for log-messages-to-keep, 0 is infinite, any number over 0 is taken literally. this is not a config option, just a comment",
     "webserver": true,
-    "purge-and-repost-on-channel-ids": [1234,4321]
+    "purge-and-repost-on-channel-ids": []
 }

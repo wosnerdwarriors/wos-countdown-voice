@@ -7,6 +7,12 @@ from discord.ui import Button, View
 import json
 import datetime
 import re
+from config_enums import (
+	DebugSection,
+	any_debug_section_enabled,
+	is_debug_category_enabled,
+	is_debug_section_enabled,
+)
 
 # Load configuration from config.json
 with open("config.json", "r") as config_file:
@@ -35,15 +41,14 @@ log_counter = 0  # Counter to generate unique IDs for logs
 playback_state = {}
 
 def _apply_logging_config():
-	sections = config.get('debug_sections') or {}
-	global_debug = bool(config.get('debug', False))
 	# Control discord library verbosity
-	discord_debug = sections.get('discord', global_debug)
+	discord_debug = is_debug_section_enabled(config, DebugSection.DISCORD)
 	lib_level = logging.DEBUG if discord_debug else logging.WARNING
 	for name in ('discord', 'discord.client', 'discord.gateway', 'discord.state', 'discord.http'):
 		logging.getLogger(name).setLevel(lib_level)
 	# Our app logger: allow debug if any non-discord section wants debug
-	any_app_debug = any(v for k,v in sections.items() if k != 'discord') or global_debug
+	non_discord_sections = [section for section in DebugSection if section is not DebugSection.DISCORD]
+	any_app_debug = any_debug_section_enabled(config, non_discord_sections)
 	logging.getLogger('discord_bot').setLevel(logging.DEBUG if any_app_debug else logging.INFO)
 
 _apply_logging_config()
@@ -53,8 +58,6 @@ bot_token = config.get("token")
 allowed_roles = config.get("roles-allowed-to-control-bot", [])
 purge_channel_ids = config.get("purge-and-repost-on-channel-ids", [])
 log_messages_to_keep = config.get("log-messages-to-keep",0)
-debug = config.get("debug", True)
-
 # Enable the required intents
 intents = discord.Intents.default()
 intents.message_content = True
@@ -73,15 +76,8 @@ def sort_sound_files(files):
 
 # Helper function to log messages
 def is_debug_enabled(category: str) -> bool:
-	# category keys map to config.debug_sections; fallback to global debug boolean
-	sections = config.get("debug_sections") or {}
-	if category in sections:
-		return bool(sections[category])
-	# allow some grouping heuristics
-	for key in sections:
-		if category.startswith(key):
-			return bool(sections[key])
-	return bool(config.get("debug", False))
+	"""Return True when the requested debug category is enabled in the config."""
+	return is_debug_category_enabled(config, category)
 
 def log_message(message, severity="info", category="catchall"):
 	global log_counter

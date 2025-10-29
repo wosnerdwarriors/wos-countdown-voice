@@ -11,6 +11,8 @@ import threading
 import time
 import argparse
 
+from config_enums import DebugSection, is_debug_section_enabled
+
 REQUIREMENTS_FILE = "requirements.txt"
 SYSTEM_DEPENDENCIES = ["ffmpeg"]  # Add more if needed
 
@@ -116,6 +118,10 @@ def parse_args():
 _parsed_args = None
 _loaded_config = None
 
+def _debug_enabled(section=None):
+	cfg = _loaded_config or {}
+	return is_debug_section_enabled(cfg, section)
+
 def load_config(path: str):
 	global _loaded_config
 	if not os.path.exists(path):
@@ -141,13 +147,13 @@ async def main():
 	web_task = asyncio.create_task(main_web(), name="web_task")
 
 	# Heartbeat to show loop is alive
-	async def heartbeat():
-		while True:
-			print_safe(f"[HB] loop alive {time.strftime('%H:%M:%S')} tasks={len(asyncio.all_tasks())}")
-			await asyncio.sleep(5)
-	heartbeat_task = asyncio.create_task(heartbeat(), name="heartbeat")
-
-	tasks = {bot_task, web_task, heartbeat_task}
+	heartbeat_task = None
+	if _debug_enabled(DebugSection.HEARTBEAT):
+		async def heartbeat():
+			while True:
+				print_safe(f"[HB] loop alive {time.strftime('%H:%M:%S')} tasks={len(asyncio.all_tasks())}")
+				await asyncio.sleep(5)
+		heartbeat_task = asyncio.create_task(heartbeat(), name="heartbeat")
 
 	def dump_state(tag):
 		print_safe(f"[DUMP:{tag}] --- TASKS ---")
@@ -172,8 +178,9 @@ async def main():
 				await asyncio.gather(*pending, return_exceptions=True)
 				dump_state("startup-fail-after-cancel")
 				# stop heartbeat
-				heartbeat_task.cancel()
-				await asyncio.gather(heartbeat_task, return_exceptions=True)
+				if heartbeat_task:
+					heartbeat_task.cancel()
+					await asyncio.gather(heartbeat_task, return_exceptions=True)
 				print_safe("[EXIT] calling sys.exit(3)")
 				sys.exit(3)
 		# If we get here both finished cleanly (unlikely)
@@ -181,11 +188,11 @@ async def main():
 	except asyncio.CancelledError:
 		print_safe("[SHUTDOWN] main() received cancellation")
 		dump_state("cancelled")
-		for t in {bot_task, web_task, heartbeat_task}:
-			if not t.done():
+		for t in (bot_task, web_task, heartbeat_task):
+			if t and not t.done():
 				print_safe(f"[CANCEL] {t.get_name()}")
 				t.cancel()
-		await asyncio.gather(bot_task, web_task, heartbeat_task, return_exceptions=True)
+		await asyncio.gather(*(t for t in (bot_task, web_task, heartbeat_task) if t), return_exceptions=True)
 		dump_state("post-cancel-gather")
 		raise
 	finally:

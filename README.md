@@ -25,7 +25,7 @@ The **WOS Countdown Bot** is a Discord bot that plays countdown audio clips in v
    - ✅ `Use Slash Commands`
    - ✅ `Manage Messages`
 4. Navigate to **Bot**, and enable:
-   - ✅ `**Presence Intentents**`
+   - ✅ `**Presence Intent**`
    - ✅ `**Server Members Intent**`
    - ✅ `**Message Content Intent**`
 5. Copy the **Generated URL** and open it in your browser.

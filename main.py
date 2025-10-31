@@ -202,6 +202,18 @@ async def main():
 					web_shutdown_event.set()
 			except Exception:
 				pass
+			# Also attempt to stop the audio scheduler cleanly if present
+			try:
+				from rally_audio import audio_scheduler
+				if audio_scheduler is not None:
+					try:
+						await audio_scheduler.stop()
+					except Exception:
+						# ignore errors during best-effort stop
+						pass
+			except Exception:
+				# ignore import failures
+				pass
 			for t in (bot_task, web_task, heartbeat_task):
 				if t and not t.done():
 					t.cancel()
@@ -219,6 +231,18 @@ async def main():
 					web_shutdown_event.set()
 			except Exception:
 				# ignore if web_server is not importable or the symbol is missing
+				pass
+			# Attempt to stop audio scheduler cleanly
+			try:
+				from rally_audio import audio_scheduler
+				if audio_scheduler is not None:
+					print_safe("[CANCEL] stopping audio scheduler")
+					try:
+						await audio_scheduler.stop()
+					except Exception:
+						print_safe("[CANCEL] audio scheduler stop raised an error")
+			except Exception:
+				# ignore import or attribute errors
 				pass
 			for t in (bot_task, web_task, heartbeat_task):
 				if t and not t.done():

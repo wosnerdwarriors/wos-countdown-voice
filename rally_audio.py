@@ -29,6 +29,7 @@ class AudioScheduler:
         self._cfg: Dict[str, Any] = dict(DEFAULTS)
         self._lock = asyncio.Lock()
         self._task: Optional[asyncio.Task] = None
+        self._watcher_task: Optional[asyncio.Task] = None
         self._next_schedule_landing_ts: int = 0
         self._next_fire_at_monotonic: float = 0.0
         # kind of next fire: 'prefix', 'main', or ''
@@ -135,8 +136,25 @@ class AudioScheduler:
         if self._task and not self._task.done():
             return
         self._task = asyncio.create_task(self._run())
-        # start event watcher
-        asyncio.create_task(self._rally_event_watcher())
+        # start event watcher and keep reference so we can cancel on stop
+        self._watcher_task = asyncio.create_task(self._rally_event_watcher())
+
+    async def stop(self):
+        """Cancel the scheduler and watcher tasks and persist state."""
+        tasks = []
+        if self._watcher_task and not self._watcher_task.done():
+            self._watcher_task.cancel()
+            tasks.append(self._watcher_task)
+        if self._task and not self._task.done():
+            self._task.cancel()
+            tasks.append(self._task)
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        # persist current config to disk
+        try:
+            await self._persist()
+        except Exception:
+            logger.exception('Failed to persist audio scheduler state on stop')
 
     async def _rally_event_watcher(self):
         """Poll rally_store events sequence to auto-reschedule on any rally/player change."""

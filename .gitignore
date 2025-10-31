@@ -1,0 +1,31 @@
+# IDE/editor cruft
+.DS_Store
+.vscode/
+
+# Python build/test artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.coverage
+coverage/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Local configuration & secrets
+config.json
+token.txt
+.env
+
+# Generated media & scratch data
+tmp-data/
+sound-clips/
+*.mp3
+
+# Logs
+*.log

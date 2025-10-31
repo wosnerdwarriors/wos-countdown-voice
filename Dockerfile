@@ -25,7 +25,14 @@ COPY requirements.txt /app/
 RUN pip3 install --no-cache-dir -r requirements.txt
 
 # Copy the bot files to the container (excluding config.json)
-COPY . /app/
+# Copy only the application files we need. Be explicit rather than "COPY ." to
+# avoid accidentally including secrets or other artifacts in the image.
+COPY ["requirements.txt", "main.py", "web_server.py", "discord_bot.py", "rally_audio.py", "rally_store.py", "generate-countdown.py", "generate-tts-mp3-general.py", "config_enums.py", "rally_audio_config.json", "README.md", "/app/"] /app/
+# Copy directories (templates, static UI, sound clips). These must exist in the
+# repository root. Adjust as needed if you add/remove folders.
+COPY rallytracker/ /app/rallytracker/
+COPY templates/ /app/templates/
+COPY sound-clips/ /app/sound-clips/
 
 # Expose necessary ports (only needed if using the webserver)
 EXPOSE 5544

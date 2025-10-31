@@ -222,6 +222,51 @@ def sanitize_basename(name: str) -> str:
 		name = name + SAFE_SUFFIX
 	return name[:60]  # length cap
 
+
+def _abs_sound_path(fname: str) -> str | None:
+	"""Return absolute path to sound file if it's safely located under sound-clips,
+	otherwise return None. This prevents directory traversal.
+	"""
+	base_dir = os.path.abspath('sound-clips')
+	# Normalize and join
+	candidate = os.path.normpath(os.path.join('sound-clips', fname))
+	try:
+		cand_abs = os.path.abspath(candidate)
+	except Exception:
+		return None
+	# Ensure candidate is under base_dir
+	try:
+		if os.path.commonpath([base_dir, cand_abs]) != base_dir:
+			return None
+	except Exception:
+		return None
+	return cand_abs
+
+
+def _client_ip():
+	# Best-effort client IP for rate-limiting; may be proxied in production.
+	try:
+		return request.remote_addr or 'unknown'
+	except Exception:
+		return 'unknown'
+
+# Simple in-memory rate limiter: per-endpoint, per-IP counters reset every minute
+_rate_limits: dict[tuple[str, str], dict[str, float]] = {}
+def _rate_allow(key: str, ip: str, limit: int = 5, window_seconds: int = 60) -> bool:
+	now = time.time()
+	rec = _rate_limits.get((key, ip))
+	if not rec:
+		_rate_limits[(key, ip)] = {'count': 1, 'ts': now}
+		return True
+	if now - rec['ts'] > window_seconds:
+		rec['count'] = 1
+		rec['ts'] = now
+		return True
+	if rec['count'] >= limit:
+		return False
+	rec['count'] += 1
+	return True
+
 def ensure_sound_dir():
 	if not os.path.isdir('sound-clips'):
 		os.makedirs('sound-clips', exist_ok=True)
@@ -369,11 +414,26 @@ async def api_generate_countdown():
 		return jsonify({"error": "invalid parameters"}), 400
 	if start < end:
 		return jsonify({"error": "start must be >= end"}), 400
+	# enforce client-supplied name max length before sanitization
+	if not isinstance(base_name_raw, str) or len(base_name_raw) > 120:
+		return jsonify({"error": "invalid name"}), 400
 	basename = sanitize_basename(base_name_raw)
 	# uniqueness
-	if os.path.exists(os.path.join('sound-clips', f"{basename}.mp3")):
+	out_rel = f"{basename}.mp3"
+	out_abs = _abs_sound_path(out_rel)
+	if not out_abs:
+		return jsonify({"error": "invalid target path"}), 400
+	if os.path.exists(out_abs):
 		return jsonify({"error": "sound already exists"}), 400
-	await asyncio.to_thread(generate_countdown_sound, start, end, language, basename)
+	# generate in thread; ensure atomic write by writing to temp path then replace
+	def _gen():
+		tmp = out_abs + '.tmp'
+		generate_countdown_sound(start, end, language, basename)
+		# generate_countdown_sound currently writes directly; ensure rename if it created expected file
+		produced = os.path.join('sound-clips', f"{basename}.mp3")
+		if os.path.exists(produced):
+			os.replace(produced, out_abs)
+	await asyncio.to_thread(_gen)
 	return jsonify({"ok": True, "name": basename})
 
 @app.route('/api/sounds/generate/tts', methods=['POST'])
@@ -382,6 +442,10 @@ async def api_generate_tts():
 	text = (data or {}).get('text')
 	if not text:
 		return jsonify({"error": "text required"}), 400
+	# basic rate limiting to avoid abuse of gTTS or system TTS
+	client_ip = _client_ip()
+	if not _rate_allow('tts_generate', client_ip, limit=6, window_seconds=60):
+		return jsonify({"error": "rate limit exceeded"}), 429
 	engine_choice = (data.get('engine') or 'system').lower()
 	if engine_choice not in ('system','gtts'):
 		engine_choice = 'system'
@@ -401,20 +465,38 @@ async def api_generate_tts():
 	except: volume=None
 	gtts_lang = data.get('language') if engine_choice == 'gtts' else None
 	base_name_raw = data.get('name') or text[:30].replace(' ','-')
+	if not isinstance(base_name_raw, str) or len(base_name_raw) > 120:
+		return jsonify({"error": "invalid name"}), 400
 	basename = sanitize_basename(base_name_raw)
-	if os.path.exists(os.path.join('sound-clips', f"{basename}.mp3")):
+	out_rel = f"{basename}.mp3"
+	out_abs = _abs_sound_path(out_rel)
+	if not out_abs:
+		return jsonify({"error": "invalid target path"}), 400
+	if os.path.exists(out_abs):
 		return jsonify({"error": "sound already exists"}), 400
-	await asyncio.to_thread(generate_tts_sound, text, voice_idx, max_seconds, basename, engine_choice, rate, volume, gtts_lang)
+
+	def _gen_t():
+		# generate to temporary, then move
+		tmp = out_abs + '.tmp'
+		generate_tts_sound(text, voice_idx, max_seconds, basename, engine_choice, rate, volume, gtts_lang)
+		produced = os.path.join('sound-clips', f"{basename}.mp3")
+		if os.path.exists(produced):
+			os.replace(produced, out_abs)
+	await asyncio.to_thread(_gen_t)
 	return jsonify({"ok": True, "name": basename, "engine": engine_choice})
 
 @app.route('/api/sounds/<name>', methods=['DELETE'])
 async def api_delete_sound(name):
+	# Only allow deletion of sanitized basenames; reject raw paths
+	if not isinstance(name, str) or len(name) > 200:
+		return jsonify({"error": "invalid name"}), 400
 	basename = sanitize_basename(name)
-	path = os.path.join('sound-clips', f"{basename}.mp3")
-	if not os.path.exists(path):
+	out_rel = f"{basename}.mp3"
+	out_abs = _abs_sound_path(out_rel)
+	if not out_abs or not os.path.exists(out_abs):
 		return jsonify({"error": "not found"}), 404
 	try:
-		os.remove(path)
+		os.remove(out_abs)
 		return jsonify({"ok": True})
 	except Exception as e:
 		return jsonify({"error": str(e)}), 500
@@ -422,16 +504,15 @@ async def api_delete_sound(name):
 @app.route('/sound-clips/<fname>')
 async def serve_sound(fname):
 	# allow only .mp3 and sanitize base
-	if not fname.endswith('.mp3'):
+	if not isinstance(fname, str) or not fname.endswith('.mp3'):
 		return jsonify({"error": "invalid file"}), 400
-	base = fname[:-4]
-	safe = sanitize_basename(base)
-	if safe + '.mp3' != fname:
+	# Normalize and verify resolution under sound-clips
+	abs_path = _abs_sound_path(fname)
+	if not abs_path:
 		return jsonify({"error": "forbidden"}), 403
-	path = os.path.join('sound-clips', fname)
-	if not os.path.exists(path):
+	if not os.path.exists(abs_path):
 		return jsonify({"error": "not found"}), 404
-	return await send_file(path, mimetype='audio/mpeg')
+	return await send_file(abs_path, mimetype='audio/mpeg')
 
 @app.route('/api/guilds')
 async def get_guilds():

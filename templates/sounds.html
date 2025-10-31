@@ -1,0 +1,207 @@
+{% extends 'base.html' %}
+{% block title %}Sound Management{% endblock %}
+{% block content %}
+<div class="container mt-4">
+  <h2>Sound Management</h2>
+  <p class="text-muted">Generate countdown or text-to-speech sounds. All generated files are prefixed with <code>gen_</code>.</p>
+  <hr/>
+  <div class="row">
+    <div class="col-md-6">
+  <h4>Generate Countdown</h4>
+      <form id="countdownForm">
+        <div class="form-group mb-2">
+          <label>Start Number</label>
+          <input type="number" class="form-control" name="start" required value="10" />
+        </div>
+        <div class="form-group mb-2">
+          <label>End Number</label>
+          <input type="number" class="form-control" name="end" required value="0" />
+        </div>
+        <div class="form-group mb-2">
+          <label>Language</label>
+          <select class="form-control" name="language" id="countdownLangSelect"></select>
+          <small class="form-text text-muted">gTTS language</small>
+        </div>
+        <div class="form-group mb-2">
+          <label>Base Name (optional)</label>
+          <input type="text" class="form-control" name="name" placeholder="gen_countdown-custom" />
+        </div>
+        <button class="btn btn-primary" type="submit">Generate Countdown</button>
+      </form>
+    </div>
+    <div class="col-md-6">
+  <h4>Generate TTS</h4>
+      <form id="ttsForm">
+        <div class="form-group mb-2">
+          <label>Text</label>
+          <textarea class="form-control" name="text" rows="2" required></textarea>
+        </div>
+        <div class="form-group mb-2">
+          <label>Engine</label>
+          <select class="form-control" name="engine" id="engineSelect">
+            <option value="system">System (pyttsx3)</option>
+            <option value="gtts">gTTS (Google)</option>
+          </select>
+        </div>
+        <div class="form-group mb-2 engine-system-only" id="voiceWrapper">
+          <label>Voice</label>
+          <select class="form-control" name="voice_idx" id="voiceSelect">
+            <option value="">(default)</option>
+          </select>
+        </div>
+        <div class="form-group mb-2 engine-gtts-only d-none" id="langWrapper">
+          <label>Language</label>
+          <select class="form-control" name="language" id="gttsLangSelect"></select>
+        </div>
+        <div class="form-group mb-2 engine-system-only">
+          <label>Max Seconds (optional)</label>
+          <input type="number" step="0.1" class="form-control" name="max_seconds" placeholder="" />
+        </div>
+        <div class="form-group mb-2 engine-system-only">
+          <label>Rate (pyttsx3)</label>
+          <input type="number" class="form-control" name="rate" placeholder="e.g. 200" />
+        </div>
+        <div class="form-group mb-2 engine-system-only">
+          <label>Volume (0.0 - 1.0)</label>
+          <input type="number" step="0.05" min="0" max="1" class="form-control" name="volume" placeholder="1.0" />
+        </div>
+        <div class="form-group mb-2">
+          <label>Base Name (optional)</label>
+          <input type="text" class="form-control" name="name" placeholder="gen_myphrase" />
+        </div>
+        <button class="btn btn-success" type="submit">Generate TTS</button>
+      </form>
+    </div>
+  </div>
+  <hr/>
+  <h4>Existing Sounds</h4>
+  <div id="soundList" class="mt-2"></div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+async function fetchSounds() {
+  const res = await fetch('/api/sounds');
+  const sounds = await res.json();
+  const list = document.getElementById('soundList');
+  list.innerHTML = '';
+  if (!Array.isArray(sounds) || sounds.length === 0) {
+    list.innerHTML = '<p class="text-muted">No sounds found.</p>';
+    return;
+  }
+  const table = document.createElement('table');
+  table.className = 'table table-sm table-striped';
+  table.innerHTML = '<thead><tr><th>Name</th><th>Size (KB)</th><th>Preview</th><th>Delete</th></tr></thead>';
+  const tbody = document.createElement('tbody');
+  sounds.forEach(s => {
+    const tr = document.createElement('tr');
+  const kb = s.bytes ? (s.bytes/1024).toFixed(1) : '';
+  tr.innerHTML = `<td>${s.name}</td><td>${kb}</td>`;
+    const tdPrev = document.createElement('td');
+    const audio = document.createElement('audio');
+    audio.controls = true;
+    audio.src = `/sound-clips/${s.filename}`; // assuming static serving
+    tdPrev.appendChild(audio);
+    const tdDelete = document.createElement('td');
+    const delBtn = document.createElement('button');
+    delBtn.className = 'btn btn-sm btn-danger';
+    delBtn.textContent = 'Delete';
+    delBtn.onclick = () => deleteSound(s.name);
+    tdDelete.appendChild(delBtn);
+    tr.appendChild(tdPrev);
+    tr.appendChild(tdDelete);
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  list.appendChild(table);
+}
+
+async function deleteSound(name) {
+  if (!confirm(`Delete sound ${name}?`)) return;
+  const res = await fetch(`/api/sounds/${encodeURIComponent(name)}`, { method: 'DELETE' });
+  if (res.ok) {
+    fetchSounds();
+  } else {
+    const data = await res.json();
+    alert(data.error || 'Delete failed');
+  }
+}
+
+document.getElementById('countdownForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const body = {};
+  fd.forEach((v,k)=>{ if(v) body[k]=v; });
+  const res = await fetch('/api/sounds/generate/countdown', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  const data = await res.json();
+  if(res.ok){ fetchSounds(); e.target.reset(); } else { alert(data.error||'Error'); }
+});
+
+document.getElementById('ttsForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const body = {};
+  fd.forEach((v,k)=>{ if(v) body[k]=v; });
+  const res = await fetch('/api/sounds/generate/tts', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  const data = await res.json();
+  if(res.ok){ fetchSounds(); e.target.reset(); } else { alert(data.error||'Error'); }
+});
+
+fetchSounds();
+setInterval(fetchSounds, 15000);
+
+async function loadVoices(){
+  try{
+    const res = await fetch('/api/sounds/voices');
+    if(!res.ok) return;
+    const voices = await res.json();
+    const sel = document.getElementById('voiceSelect');
+    // preserve existing first option
+    voices.forEach(v=>{
+      const opt = document.createElement('option');
+      const langs = (v.languages||[]).join(',');
+      opt.value = v.index;
+      opt.textContent = `${v.index}: ${v.name}${langs? ' ['+langs+']':''}`;
+      sel.appendChild(opt);
+    });
+  }catch(e){ /* ignore */ }
+}
+loadVoices();
+
+async function loadGttsLanguages(){
+  try{
+    const res = await fetch('/api/sounds/gtts_languages');
+    if(!res.ok) return;
+    const langs = await res.json();
+    const sel1 = document.getElementById('gttsLangSelect');
+    const sel2 = document.getElementById('countdownLangSelect');
+    [sel1, sel2].forEach(sel=>{ sel.innerHTML=''; });
+    langs.forEach(l=>{
+      const opt = document.createElement('option');
+      opt.value = l.code;
+      opt.textContent = `${l.code} - ${l.name}`;
+      sel1.appendChild(opt.cloneNode(true));
+      sel2.appendChild(opt);
+    });
+    // default to en if exists
+    [sel1, sel2].forEach(sel=>{ if(sel.querySelector('option[value="en"]')) sel.value='en'; });
+  }catch(e){ /* ignore */ }
+}
+loadGttsLanguages();
+
+function updateEngineVisibility(){
+  const engine = document.getElementById('engineSelect').value;
+  const sysElems = document.querySelectorAll('.engine-system-only');
+  const gttsElems = document.querySelectorAll('.engine-gtts-only');
+  if(engine === 'gtts'){
+    sysElems.forEach(el=>el.classList.add('d-none'));
+    gttsElems.forEach(el=>el.classList.remove('d-none'));
+  } else {
+    sysElems.forEach(el=>el.classList.remove('d-none'));
+    gttsElems.forEach(el=>el.classList.add('d-none'));
+  }
+}
+document.getElementById('engineSelect').addEventListener('change', updateEngineVisibility);
+updateEngineVisibility();
+</script>
+{% endblock %}

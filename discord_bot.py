@@ -258,7 +258,7 @@ class ControlView(View):
 
 	async def skip_back_callback(self, interaction: discord.Interaction):
 		log_message("skip_back_callback called", category="skip")
-		from discord_bot import skip_playback
+		# Call the local skip_playback function directly to avoid intra-module import
 		ok = await skip_playback(interaction.guild, -1.0)
 		if not ok:
 			await interaction.response.send_message("Cannot skip - no active sound.", ephemeral=True)
@@ -267,7 +267,7 @@ class ControlView(View):
 
 	async def skip_forward_callback(self, interaction: discord.Interaction):
 		log_message("skip_forward_callback called", category="skip")
-		from discord_bot import skip_playback
+		# Call the local skip_playback function directly to avoid intra-module import
 		ok = await skip_playback(interaction.guild, 1.0)
 		if not ok:
 			await interaction.response.send_message("Cannot skip - no active sound.", ephemeral=True)

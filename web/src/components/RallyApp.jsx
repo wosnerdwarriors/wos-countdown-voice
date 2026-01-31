@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   callName,
   preloadCountdownSounds,
+  playCountdownTest,
   scheduleCountdownToTarget,
   unlockAudio,
   unlockTTS,
@@ -35,6 +36,7 @@ export default function RallyApp({ roomId }) {
   const [timeOffsetMs, setTimeOffsetMs] = useState(0);
   const [lastSyncAt, setLastSyncAt] = useState(null);
   const [bestRttMs, setBestRttMs] = useState(null);
+  const [audioEnabled, setAudioEnabled] = useState(false);
   const offsetRef = useRef(0);
   const syncSamplesRef = useRef([]);
 
@@ -180,6 +182,22 @@ export default function RallyApp({ roomId }) {
     void preloadCountdownSounds();
   }, []);
 
+  const enableAudio = () => {
+    unlockAudio();
+    if (ttsEnabled) unlockTTS();
+    void preloadCountdownSounds();
+    setAudioEnabled(true);
+  };
+
+  const testAudio = () => {
+    if (!audioEnabled) return;
+    void playCountdownTest({
+      name: "Testname",
+      ttsVolume,
+      gainFactor: beepGainFactor,
+    });
+  };
+
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now() + offsetRef.current), 200);
     return () => clearInterval(t);
@@ -249,8 +267,8 @@ export default function RallyApp({ roomId }) {
   function startRally() {
     if (!canStartRally) return;
 
-    if (ttsEnabled) unlockTTS();
-    unlockAudio();
+    if (ttsEnabled && audioEnabled) unlockTTS();
+    if (audioEnabled) unlockAudio();
 
     sendRallyStart();
   }
@@ -408,6 +426,21 @@ export default function RallyApp({ roomId }) {
       </header>
 
       <main className="grid">
+        {!audioEnabled && (
+          <section className="card audioGate">
+            <div>
+              <div className="metaLabel">Audio locked</div>
+              <div className="metaValue">Enable Audio</div>
+              <p>
+                Make sure to enable audio to hear countdowns
+              </p>
+            </div>
+            <button className="btn primary" type="button" onClick={enableAudio}>
+              Enable Audio
+            </button>
+          </section>
+        )}
+
         {/* Players and local notify selection */}
         <section className="card">
           <div className="cardHead">
@@ -554,6 +587,17 @@ export default function RallyApp({ roomId }) {
                   value={ttsLevel}
                   onChange={(e) => setTtsLevel(Number(e.target.value))}
                 />
+              </div>
+              <div className="localSettingsCol" style={{ display: "flex", alignItems: "flex-end" }}>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={testAudio}
+                  disabled={!audioEnabled}
+                  title={!audioEnabled ? "Enable Audio first" : "Play countdown sample"}
+                >
+                  Test Audio
+                </button>
               </div>
             </div>
           </div>

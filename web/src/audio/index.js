@@ -191,3 +191,28 @@ export function scheduleCountdownToTarget(
 export function callName(name, { ttsVolume = 1.0 } = {}) {
   speakName(name, { lang: "en-US", rate: 1.05, volume: ttsVolume });
 }
+
+export async function playCountdownTest({
+  name = "Testname",
+  ttsVolume = 1.0,
+  gainFactor = 1.0,
+} = {}) {
+  const ctx = ensureAudio();
+  if (!ctx) return;
+
+  if (!countdownBuffers) {
+    await preloadCountdownSounds();
+  }
+  if (!countdownBuffers) return;
+
+  speakName(name, { lang: "en-US", rate: 1.05, volume: ttsVolume });
+
+  const start = ctx.currentTime + 0.2;
+  const startIdx = 2; // "3"
+  for (let i = 0; i < 3; i += 1) {
+    const idx = startIdx + i;
+    scheduleBuffer(countdownBuffers.numbers[idx], start + i, {
+      gain: gainFactor,
+    });
+  }
+}

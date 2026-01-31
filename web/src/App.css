@@ -97,6 +97,15 @@ body{
   box-shadow: var(--shadow);
   backdrop-filter: blur(10px);
 }
+.audioGate{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  grid-column: 1 / -1;
+  border: 1px dashed rgba(255,255,255,.22);
+  background: rgba(255,255,255,.04);
+}
 .cardHead{
   display:flex;
   align-items:flex-start;

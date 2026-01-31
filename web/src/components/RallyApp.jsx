@@ -69,6 +69,10 @@ export default function RallyApp({ roomId }) {
   const announcedRef = useRef(new Set());
 
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const selectedInRoom = useMemo(
+    () => selectedIds.filter((id) => state.players.some((p) => p.id === id)),
+    [selectedIds, state.players]
+  );
   const sortedPlayers = useMemo(
     () => state.players.slice().sort((a, b) => a.name.localeCompare(b.name)),
     [state.players]
@@ -333,22 +337,24 @@ export default function RallyApp({ roomId }) {
   }, [state, now, delay]);
 
   // Hybrid scheduler for local audio only.
-  const effectiveOnlySelected = selectedIds.length > 0;
+  const effectiveOnlySelected = selectedInRoom.length > 0;
   const syncFreshMs = 60000;
   const isSynced = lastSyncAt && Date.now() - lastSyncAt < syncFreshMs;
   const syncLabel = isSynced ? "Live" : "Syncing";
 
   useEffect(() => {
-    if (!ttsEnabled) return;
+    if (!audioEnabled) return;
     if (!rallyComputed) return;
 
     const triggerMs = 5200;
     const toleranceMs = 350;
 
-  const callFor = (playerName, targetTs) => {
-    callName(playerName, { ttsVolume });
-    scheduleCountdownToTarget(targetTs, now, { gainFactor: beepGainFactor });
-  };
+    const callFor = (playerName, targetTs) => {
+      if (ttsEnabled) {
+        callName(playerName, { ttsVolume });
+      }
+      scheduleCountdownToTarget(targetTs, now, { gainFactor: beepGainFactor });
+    };
 
     for (const r of rallyComputed.rows) {
       // When any player is selected, only call selected players.
@@ -389,6 +395,12 @@ export default function RallyApp({ roomId }) {
     effectiveOnlySelected,
     selectedSet,
   ]);
+
+  useEffect(() => {
+    if (selectedIds.length === 0) return;
+    if (selectedInRoom.length === selectedIds.length) return;
+    setSelectedIds(selectedInRoom);
+  }, [selectedIds, selectedInRoom, setSelectedIds]);
 
   return (
     <div className="page">

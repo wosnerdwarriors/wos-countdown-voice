@@ -1,0 +1,21 @@
+{
+  "name": "wos-rally-sync",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node --test src/utils/rally.test.js src/utils/scheduling.test.js src/utils/sync.test.js"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "wos-rally-sync-cloudflare": "file:.."
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "vite": "^7.3.0"
+  }
+}

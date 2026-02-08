@@ -1,0 +1,21 @@
+name = "wos-rally-sync"
+main = "worker/src/index.ts"
+compatibility_date = "2025-12-24"
+
+[assets]
+directory = "./web/dist"
+
+[[durable_objects.bindings]]
+name = "ROOM"
+class_name = "RallyRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RallyRoom"]
+
+[observability] # Optional for Worker logs in Cloudflare dashboard
+[observability.logs]
+enabled = true  
+head_sampling_rate = 1
+invocation_logs = true
+persist = true

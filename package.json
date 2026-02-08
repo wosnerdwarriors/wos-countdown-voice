@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "wrangler dev --local --persist-to ./worker/.wrangler --port 8787",
     "dev:web": "npm --prefix web run dev",
+    "test:web": "npm --prefix web test",
     "build": "npm --prefix web install && npm --prefix web run build",
     "deploy": "npm run build && wrangler deploy"
   },

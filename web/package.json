@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --test src/utils/rally.test.js src/utils/scheduling.test.js src/utils/sync.test.js"
   },
   "dependencies": {
     "react": "^18.3.1",

@@ -31,6 +31,13 @@ Open the Vite URL (usually `http://localhost:5173`).
 
 The frontend will auto-connect to the local Worker at `ws://localhost:8787/ws?instance_id=...`.
 
+## Tests
+
+Run timing + scenario tests for the web client:
+```bash
+npm run test:web
+```
+
 ## Deploy to Cloudflare (recommended: one Worker)
 
 1) Authenticate:

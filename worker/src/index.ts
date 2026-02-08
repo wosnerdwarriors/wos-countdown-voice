@@ -34,6 +34,10 @@ type TimeSyncResponse = { type: "TIME_SYNC_RESPONSE"; payload: { t0: number; t1:
 const DEFAULT_STATE: RoomState = { players: [], rally: null, lastActiveAt: Date.now() };
 const AUTO_DELETE_GRACE_MS = 5000;
 
+function ceilToSecond(ts: number): number {
+  return Math.ceil(ts / 1000) * 1000;
+}
+
 function jsonResponse(obj: unknown, init: ResponseInit = {}) {
   return new Response(JSON.stringify(obj), {
     ...init,
@@ -173,6 +177,7 @@ export class RallyRoom {
         if (typeof computedLaunchAt !== "number" || !Number.isFinite(computedLaunchAt)) {
           computedLaunchAt = Date.now() + delayMs + durationMs;
         }
+        computedLaunchAt = ceilToSecond(computedLaunchAt);
 
         const arrivalAt = computedLaunchAt + starter.marchMs;
         this.data.rally = {

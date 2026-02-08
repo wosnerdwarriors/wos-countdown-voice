@@ -8,11 +8,34 @@ import {
   unlockTTS,
 } from "../audio/index.js";
 import { useLocalSettings } from "../hooks/useLocalSettings.js";
+import { computeRallyView } from "../utils/rally.js";
 import { leaveRoom } from "../utils/room.js";
+import {
+  shouldScheduleAudio,
+  shouldTriggerTts,
+} from "../utils/scheduling.js";
+import {
+  computeOffsetAndRtt,
+  createServerClockAnchor,
+  getServerNowMs,
+  isSyncFresh,
+  isSyncReliable,
+  updateBestSyncSample,
+} from "../utils/sync.js";
 import { formatMs, formatTimeOfDay } from "../utils/time.js";
 
 const SYNC_SAMPLE_COUNT = 6;
 const SYNC_INTERVAL_MS = 5000; // every 5 seconds
+const SYNC_MAX_AGE_MS = 15000;
+const SYNC_MAX_RTT_MS = 250;
+const CLOCK_TICK_MS = 100;
+
+function perfNowMs() {
+  if (typeof performance !== "undefined" && typeof performance.now === "function") {
+    return performance.now();
+  }
+  return Date.now();
+}
 
 const isEmbedded = (() => {
   try {
@@ -37,8 +60,10 @@ export default function RallyApp({ roomId }) {
   const [lastSyncAt, setLastSyncAt] = useState(null);
   const [bestRttMs, setBestRttMs] = useState(null);
   const [audioEnabled, setAudioEnabled] = useState(false);
-  const offsetRef = useRef(0);
   const syncSamplesRef = useRef([]);
+  const clockAnchorRef = useRef(null);
+  const audioScheduledRef = useRef(new Set());
+  const ttsCalledRef = useRef(new Set());
 
   // Player input.
   const [name, setName] = useState("");
@@ -66,8 +91,6 @@ export default function RallyApp({ roomId }) {
     setSelectedIds,
   } = useLocalSettings();
 
-  const announcedRef = useRef(new Set());
-
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const selectedInRoom = useMemo(
     () => selectedIds.filter((id) => state.players.some((p) => p.id === id)),
@@ -93,30 +116,36 @@ export default function RallyApp({ roomId }) {
     });
   }
 
-  function setOffsetSample(offsetMs, rttMs, atTs) {
-    const samples = syncSamplesRef.current.slice(-SYNC_SAMPLE_COUNT + 1);
-    samples.push({ offsetMs, rttMs, atTs });
-    const best = samples.reduce(
-      (min, next) => (next.rttMs < min.rttMs ? next : min),
-      samples[0]
+  function setOffsetSample(offsetMs, rttMs) {
+    const { samples, best } = updateBestSyncSample(
+      syncSamplesRef.current,
+      { offsetMs, rttMs },
+      SYNC_SAMPLE_COUNT
     );
     syncSamplesRef.current = samples;
-    if (best) {
-      offsetRef.current = best.offsetMs;
-      setTimeOffsetMs(best.offsetMs);
-      setBestRttMs(best.rttMs);
-      setLastSyncAt(atTs);
-    }
+    if (!best) return;
+
+    const localNowMs = Date.now();
+    const anchor = createServerClockAnchor({
+      localNowMs,
+      perfNowMs: perfNowMs(),
+      offsetMs: best.offsetMs,
+    });
+    if (!anchor) return;
+
+    clockAnchorRef.current = anchor;
+    setNow(anchor.serverNowMs);
+    setTimeOffsetMs(best.offsetMs);
+    setBestRttMs(best.rttMs);
+    setLastSyncAt(localNowMs);
   }
 
   function handleTimeSyncResponse(payload) {
     if (!payload) return;
     const { t0, t1, t2 } = payload;
-    if (![t0, t1, t2].every((v) => Number.isFinite(v))) return;
-    const t3 = Date.now();
-    const rtt = Math.max(0, (t3 - t0) - (t2 - t1));
-    const offset = ((t1 - t0) + (t2 - t3)) / 2;
-    setOffsetSample(offset, rtt, t3);
+    const sample = computeOffsetAndRtt({ t0, t1, t2, t3: Date.now() });
+    if (!sample) return;
+    setOffsetSample(sample.offsetMs, sample.rttMs);
   }
 
   function requestTimeSync(socket) {
@@ -203,7 +232,17 @@ export default function RallyApp({ roomId }) {
   };
 
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now() + offsetRef.current), 200);
+    const tick = () => {
+      const serverNowMs = getServerNowMs(clockAnchorRef.current, perfNowMs());
+      if (Number.isFinite(serverNowMs)) {
+        setNow(serverNowMs);
+      } else {
+        setNow(Date.now());
+      }
+    };
+
+    tick();
+    const t = setInterval(tick, CLOCK_TICK_MS);
     return () => clearInterval(t);
   }, []);
 
@@ -223,11 +262,37 @@ export default function RallyApp({ roomId }) {
     Number(seconds) > 0 &&
     Number(seconds) <= 24 * 60 * 60;
 
+  const localNowMs = Date.now();
+  const hasFreshSync = isSyncFresh({
+    lastSyncAtMs: lastSyncAt,
+    nowMs: localNowMs,
+    maxAgeMs: SYNC_MAX_AGE_MS,
+  });
+  const isSynced = isSyncReliable({
+    lastSyncAtMs: lastSyncAt,
+    nowMs: localNowMs,
+    maxAgeMs: SYNC_MAX_AGE_MS,
+    bestRttMs: bestRttMs,
+    maxRttMs: SYNC_MAX_RTT_MS,
+  });
+  const hasStarter = !!starterId && state.players.some((p) => p.id === starterId);
+
   const canStartRally =
     ws &&
     state.players.length > 0 &&
-    starterId &&
-    state.players.some((p) => p.id === starterId);
+    hasStarter &&
+    isSynced;
+  const startRallyTitle = !ws
+    ? "Connecting..."
+    : state.players.length === 0
+      ? "Add at least one player"
+      : !hasStarter
+        ? "Choose Starter"
+        : !hasFreshSync
+          ? "Clock sync in progress"
+          : !Number.isFinite(bestRttMs) || bestRttMs > SYNC_MAX_RTT_MS
+            ? `Clock sync unstable (RTT > ${SYNC_MAX_RTT_MS} ms)`
+            : "Start Rally";
 
   function addPlayer() {
     if (!canAdd) return;
@@ -280,81 +345,28 @@ export default function RallyApp({ roomId }) {
   function endRally() {
     if (!ws) return;
     ws.send(JSON.stringify({ roomId, type: "RALLY_END" }));
-    announcedRef.current = new Set();
+    audioScheduledRef.current = new Set();
+    ttsCalledRef.current = new Set();
   }
 
-  const rallyComputed = useMemo(() => {
-    const activeRally = state.rally;
-    if (!activeRally) return null;
-
-    const starter = state.players.find((p) => p.id === activeRally.starterId);
-    if (!starter) return null;
-
-    const launchAt = activeRally.launchAt; // server timestamp (UTC ms)
-    const rallyDurationMs = Number.isFinite(activeRally.rallyDurationMs)
-      ? activeRally.rallyDurationMs
-      : delay * 60 * 1000;
-    const rallyStartAt = launchAt - rallyDurationMs;
-    const arrivalAt = Number.isFinite(activeRally.arrivalAt)
-      ? activeRally.arrivalAt
-      : launchAt + starter.marchMs;
-
-    const joinRemainingMs = launchAt - now;
-    let phase = joinRemainingMs > 0 ? "JOIN" : "MARCH";
-    if (arrivalAt <= now) phase = "LANDED";
-
-    const rows = state.players
-      .map((p) => {
-        const startAt = arrivalAt - p.marchMs;
-        const playerRallyStartAt = startAt - rallyDurationMs;
-        const diffMs = startAt - now;
-        const diffToRallyStartMs = playerRallyStartAt - now;
-        const diffFromLaunchMs = startAt - launchAt;
-        const landInMs = arrivalAt - now;
-
-        return {
-          ...p,
-          startAt,
-          rallyStartAt: playerRallyStartAt,
-          diffMs,
-          diffToRallyStartMs,
-          diffFromLaunchMs,
-          landInMs,
-        };
-      })
-      .filter((r) => r.landInMs >= 0)
-      .sort((a, b) => a.startAt - b.startAt);
-
-    return {
-      starter,
-      launchAt,
-      rallyStartAt,
-      arrivalAt,
-      rows,
-      joinRemainingMs,
-      phase,
-    };
-  }, [state, now, delay]);
+  const rallyComputed = useMemo(
+    () =>
+      computeRallyView({
+        state,
+        nowMs: now,
+        fallbackRallyDurationMs: delay * 60 * 1000,
+      }),
+    [state, now, delay]
+  );
 
   // Hybrid scheduler for local audio only.
   const effectiveOnlySelected = selectedInRoom.length > 0;
-  const syncFreshMs = 60000;
-  const isSynced = lastSyncAt && Date.now() - lastSyncAt < syncFreshMs;
-  const syncLabel = isSynced ? "Live" : "Syncing";
+  const hasGoodRtt = Number.isFinite(bestRttMs) && bestRttMs <= SYNC_MAX_RTT_MS;
+  const syncLabel = isSynced ? "Live" : hasFreshSync && !hasGoodRtt ? "High RTT" : "Syncing";
 
   useEffect(() => {
     if (!audioEnabled) return;
     if (!rallyComputed) return;
-
-    const triggerMs = 5200;
-    const toleranceMs = 350;
-
-    const callFor = (playerName, targetTs) => {
-      if (ttsEnabled) {
-        callName(playerName, { ttsVolume });
-      }
-      scheduleCountdownToTarget(targetTs, now, { gainFactor: beepGainFactor });
-    };
 
     for (const r of rallyComputed.rows) {
       // When any player is selected, only call selected players.
@@ -363,28 +375,45 @@ export default function RallyApp({ roomId }) {
       }
 
       let targetTs = null;
-      let key = null;
+      let phaseKey = null;
+      let allowTtsForPhase = false;
 
       if (rallyComputed.phase === "JOIN" && ttsRallyCalls) {
         targetTs = r.rallyStartAt;
-        key = `rally:${r.id}:${targetTs}`;
+        phaseKey = "rally";
+        allowTtsForPhase = true;
       } else if (rallyComputed.phase === "MARCH" && ttsMarchCalls) {
         targetTs = r.startAt;
-        key = `march:${r.id}:${targetTs}`;
+        phaseKey = "march";
+        allowTtsForPhase = true;
       } else {
         continue;
       }
 
-      if (announcedRef.current.has(key)) continue;
-
       const msLeft = targetTs - now;
+      const audioKey = `${phaseKey}:audio:${r.id}:${targetTs}`;
+      const ttsKey = `${phaseKey}:tts:${r.id}:${targetTs}`;
 
-      if (msLeft <= triggerMs && msLeft > 600) {
-        announcedRef.current.add(key);
-        callFor(r.name, targetTs);
+      if (
+        !audioScheduledRef.current.has(audioKey) &&
+        shouldScheduleAudio(msLeft)
+      ) {
+        audioScheduledRef.current.add(audioKey);
+        scheduleCountdownToTarget(targetTs, now, { gainFactor: beepGainFactor });
+      }
+
+      if (
+        ttsEnabled &&
+        allowTtsForPhase &&
+        !ttsCalledRef.current.has(ttsKey) &&
+        shouldTriggerTts(msLeft)
+      ) {
+        ttsCalledRef.current.add(ttsKey);
+        callName(r.name, { ttsVolume });
       }
     }
   }, [
+    audioEnabled,
     ttsEnabled,
     ttsRallyCalls,
     ttsMarchCalls,
@@ -395,6 +424,12 @@ export default function RallyApp({ roomId }) {
     effectiveOnlySelected,
     selectedSet,
   ]);
+
+  useEffect(() => {
+    if (rallyComputed) return;
+    audioScheduledRef.current = new Set();
+    ttsCalledRef.current = new Set();
+  }, [rallyComputed]);
 
   useEffect(() => {
     if (selectedIds.length === 0) return;
@@ -429,7 +464,9 @@ export default function RallyApp({ roomId }) {
             className={`chip ${isSynced ? "ok" : "warn"}`}
             title={`Clock offset: ${Math.round(timeOffsetMs)} ms, RTT: ${
               bestRttMs ?? "?"
-            } ms`}
+            } ms, sync age: ${
+              Number.isFinite(lastSyncAt) ? `${Math.round(localNowMs - lastSyncAt)} ms` : "?"
+            }`}
           >
             <span className="dot" />
             {syncLabel}
@@ -665,7 +702,7 @@ export default function RallyApp({ roomId }) {
                 className="btn primary"
                 onClick={startRally}
                 disabled={!canStartRally}
-                title={!canStartRally ? "Choose Starter" : "Start Rally"}
+                title={startRallyTitle}
               >
                 Start Rally
               </button>

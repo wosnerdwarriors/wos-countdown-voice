@@ -1,4 +1,4 @@
-discord==2.3.2
+discord.py[voice]==2.7.1
 gtts==2.3.1
 pydub==0.25.1
 quart>=0.20.0

@@ -32,8 +32,14 @@ def get_required_modules():
             line = line.strip()
             if line and not line.startswith("#"):
                 package_name = line.split("==")[0].split(">=")[0].split("<=")[0].lower()
+                # Strip extras like [voice]
+                package_name = package_name.split("[")[0]
+
+                # Normalize known mismatches between pip name and import name
                 if package_name == "pynacl":
-                    package_name = "nacl"  # Normalize PyNaCl to nacl for import
+                    package_name = "nacl"
+                elif package_name == "discord.py":
+                    package_name = "discord"
                 modules.append(package_name)
 
     return modules

@@ -16,6 +16,37 @@
         .log-category-active { display: table-row; }
         .table-container { overflow-x: auto; }
         .btn.active-category { background-color: green; color: white; }
+
+        /* Rally tracker styles - screenshot-like */
+        .section-title { font-weight: 700; font-size: 1.25rem; }
+        .card-soft { background: #f8fafb; border: 1px solid #e6e9ef; border-radius: 8px; }
+        .list-soft { background: #fff; border: 1px solid #e6e9ef; border-radius: 8px; }
+        .list-soft .list-group-item { display: flex; align-items: center; justify-content: space-between; }
+        .list-soft .name { font-weight: 600; }
+        .list-soft .secs { font-weight: 700; }
+        .list-soft .btn { margin-left: 6px; }
+        .form-inline .form-control { margin-right: 8px; }
+        .small-muted { font-size: .9rem; color: #667085; }
+        .mono { font-family: Menlo,Consolas,monospace; }
+        .badge-soft { font-weight: 600; }
+        .rally-card { border-left: 6px solid #28a745; }
+        .rally-card .title { font-weight: 700; }
+        .rally-times .block { padding: 8px 12px; border-radius: 6px; background: #e8f5ea; display: inline-flex; align-items:center; }
+        .rally-times .block:not(:last-child){ margin-right: 10px; }
+        .rally-times .block .btn { margin-left: 6px; }
+        .rt-table th, .rt-table td { vertical-align: middle; }
+        .edit-inline { display: inline-flex; align-items: center; }
+        .edit-inline input { width: 140px; margin-right: 6px; }
+
+        /* Stronger, more accessible focus styles */
+        .form-control:focus,
+        .custom-select:focus,
+        select.form-control:focus,
+        #rtStarterSelect:focus {
+          border-color: #ff9800 !important;            /* vivid orange border */
+          box-shadow: 0 0 0 .25rem rgba(255,152,0,.45) !important; /* glow */
+          outline: 0;                                   /* remove default outline */
+        }
     </style>
 </head>
 <body>
@@ -29,26 +60,16 @@
         <div class="btn-group mb-3" role="group">
             <button id="showServers" class="btn btn-primary" onclick="showSection('servers')">Servers</button>
             <button id="showLogs" class="btn btn-secondary" onclick="showSection('logs')">Logs</button>
+            <button id="showRally" class="btn btn-secondary" onclick="showSection('rally')">Rally Tracker</button>
         </div>
 
         <!-- Category filter buttons -->
-        <div id="logCategoryButtons" class="btn-group mb-3" role="group" style="display: none;">
-            <!-- Buttons will be populated dynamically -->
-        </div>
+        <div id="logCategoryButtons" class="btn-group mb-3" role="group" style="display: none;"></div>
 
         <!-- Servers view -->
         <div id="serversSection" class="section">
-            <!-- Guild tabs -->
-            <div id="guilds" class="nav nav-tabs guild-tabs">
-                <!-- Guild tabs will be loaded here dynamically -->
-            </div>
-
-            <!-- Controls for sound and disconnecting -->
-            <div id="controls" class="controls mt-4">
-                <!-- Controls will be loaded dynamically when a server is selected -->
-            </div>
-
-            <!-- Channels list with join buttons -->
+            <div id="guilds" class="nav nav-tabs guild-tabs"></div>
+            <div id="controls" class="controls mt-4"></div>
             <div id="channels" class="channels mt-4">
                 <div class="alert alert-info">Select a server to see its channels.</div>
             </div>
@@ -58,18 +79,120 @@
         <div id="logsSection" class="section hidden">
             <div class="table-container">
                 <table class="table table-bordered table-hover">
-                    <thead class="thead-dark">
-                        <tr>
-                            <th>Timestamp</th>
-                            <th>Severity</th>
-                            <th>Category</th>
-                            <th>Message</th>
-                        </tr>
-                    </thead>
-                    <tbody id="logs">
-                        <!-- Log entries will be dynamically added here -->
-                    </tbody>
+                    <thead class="thead-dark"><tr><th>Timestamp</th><th>Severity</th><th>Category</th><th>Message</th></tr></thead>
+                    <tbody id="logs"></tbody>
                 </table>
+            </div>
+        </div>
+
+        <!-- Rally Tracker view -->
+        <div id="rallySection" class="section hidden">
+            <div class="row">
+                <!-- LEFT: March Times + Settings -->
+                <div class="col-lg-6 mb-3">
+                    <div class="mb-2 section-title">March Times</div>
+                    <div class="list-soft">
+                        <ul id="playersList" class="list-group list-group-flush"></ul>
+                    </div>
+                    <div class="card card-soft mt-3 p-3">
+                        <div class="form-inline">
+                            <input id="plName" type="text" class="form-control" placeholder="Player Name">
+                            <input id="plSecs" type="number" class="form-control" placeholder="March Time (seconds)">
+                            <button class="btn btn-primary" onclick="pl_add()">Add</button>
+                        </div>
+                        <div class="small-muted mt-2">You can edit players later or fine-tune using ±1s.</div>
+                    </div>
+
+                    <!-- Settings (was Audio Sync) -->
+                    <div class="card card-soft mt-3 p-3">
+                        <h6 class="mb-2">Settings</h6>
+                        <p class="small-muted mb-2">
+                          When <strong id="rtFirstSecDisplay">50s</strong> remain,
+                          <code id="rtVoiceExampleStatic"></code> is played via the API.
+                          Configure the voice pack and timing below.
+                        </p>
+
+                        <div class="form-row align-items-end">
+                            <div class="form-group col-md-6">
+                                <label for="rtVoicePrefix">Voice pack</label>
+                                <select id="rtVoicePrefix" class="form-control" onchange="rt_onVoiceChange()"></select>
+                                <small class="form-text text-muted small-muted">
+                                  Pick the <em>name-language</em> of your files (e.g., <code>countdown-en</code>).
+                                  Files must be named <code>name-language-START-END.mp3</code>.
+                                </small>
+                            </div>
+                            <div class="form-group col-md-6">
+                                <label for="rtFirstCallSec">First call second</label>
+                                <select id="rtFirstCallSec" class="form-control" onchange="rt_onFirstSecChange()"></select>
+                                <small class="form-text text-muted small-muted">
+                                  Second before land for the first audio (e.g., 55s, 50s, 45s). Options are derived from the selected voice pack.
+                                </small>
+                            </div>
+                        </div>
+
+                        <div class="form-row align-items-end">
+                            <div class="form-group col-md-4">
+                                <label for="rtSyncLead">First trigger lead (ms)</label>
+                                <input type="number" id="rtSyncLead" class="form-control" step="50" value="0">
+                                <small class="form-text text-muted small-muted">Offset for the first call. Positive = earlier; negative = later.</small>
+                            </div>
+                            <div class="form-group col-md-4">
+                                <label for="rtChainLead">Chain lead (ms)</label>
+                                <input type="number" id="rtChainLead" class="form-control" step="50" value="0">
+                                <small class="form-text text-muted small-muted">Offset for each chained countdown after the first.</small>
+                            </div>
+                            <div class="form-group col-md-4">
+                                <label for="rtFallbackTol">Fallback tolerance (s)</label>
+                                <input type="number" id="rtFallbackTol" class="form-control" step="1" min="0" value="5">
+                                <small class="form-text text-muted small-muted">If no exact gap exists, use the next lower file within this window.</small>
+                            </div>
+                        </div>
+
+                        <div class="form-group mt-2">
+                            <button class="btn btn-secondary" onclick="rt_saveSyncLead()">Save</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- RIGHT: Rallies -->
+                <div class="col-lg-6 mb-3">
+                    <div class="mb-2 section-title">Rallies</div>
+
+                    <!-- Active rallies -->
+                    <div id="rtActive"></div>
+
+                    <!-- New rally form -->
+                    <div class="card card-soft mt-3 p-3">
+                        <div class="form-group">
+                            <label for="rtStarterSelect">Rally Starter</label>
+                            <select id="rtStarterSelect" class="form-control"></select>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group col-6">
+                                <label for="rtLaunchMin">Launch Time</label>
+                                <div class="input-group">
+                                    <input id="rtLaunchMin" type="number" class="form-control" value="5" min="0">
+                                    <div class="input-group-append"><span class="input-group-text">Minutes</span></div>
+                                </div>
+                            </div>
+                            <div class="form-group col-6">
+                                <label>&nbsp;</label>
+                                <div class="input-group">
+                                    <input id="rtLaunchSec" type="number" class="form-control" value="0" min="0" max="59">
+                                    <div class="input-group-append"><span class="input-group-text">Seconds</span></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center">
+                            <button class="btn btn-primary mr-2" onclick="rt_startRally()">Start Rally</button>
+                            <button class="btn btn-outline-secondary" onclick="rt_toggleMode()">Switch Time Mode</button>
+                            <!-- Right-aligned controls -->
+                            <button class="btn btn-outline-warning ml-auto mr-2" onclick="rt_stopAudio()">Stop Audio</button>
+                            <button class="btn btn-outline-danger" onclick="rt_resetAll()">Reset</button>
+                        </div>
+                        <!-- (Settings are on the left column) -->
+                    </div>
+                </div><!-- /Rallies -->
             </div>
         </div>
     </div>
@@ -84,22 +207,119 @@
         let lastLogId = 0;
         let categories = new Set(['all']);
 
+        // === Rally Tracker state ===
+        const RT_THRESHOLD_MS = 50 * 1000; // legacy constant (unused now)
+
+        // Leads/tolerances
+        let rt_syncLeadMs  = parseInt(localStorage.getItem('rt_syncLeadMs')  || '0', 10); // first call lead
+        let rt_chainLeadMs = parseInt(localStorage.getItem('rt_chainLeadMs') || '0', 10); // chained calls lead
+        let rt_fallbackTolSec = parseInt(localStorage.getItem('rt_fallbackTolSec') || '5', 10);
+        if (isNaN(rt_fallbackTolSec) || rt_fallbackTolSec < 0) rt_fallbackTolSec = 5;
+
+        // First call second & voice pack
+        let rt_voicePrefix = localStorage.getItem('rt_voicePrefix') || 'countdown-en';
+        let rt_firstCallSec = parseInt(localStorage.getItem('rt_firstCallSec') || '50', 10);
+        let rt_voicePrefixes = [];
+
+        // Prevent multiple first-call triggers while /api/play pending
+        let rt_pendingFirst = false;
+        // NEW: Gate to prevent re-triggering first-call while any rally is under threshold
+        let rt_windowActive = false;
+
+        // Players (march times)
+        let pl_players = []; // {id, name, secs, _editing?}
+        // Rallies
+        let rt_rallies = []; // {id, starterId, starterName, marchSec, launchEndAt, hitAt, triggered50, lastLandMs}
+
+        // Chain state & available files for the current voice pack
+        let rt_chain = { active: false, processedAt: 0, anchorRallyId: null };
+        let rt_reinforceBySec = new Map(); // seconds -> [file names]
+        let rt_reinforceLoaded = false;
+
+        // Update the static example to always show countdown-en
+        function rt_updateVoiceExample(){
+          const staticEl = document.getElementById('rtVoiceExampleStatic');
+          if (staticEl) staticEl.textContent = `countdown-en-${rt_firstCallSec}-0.mp3`;
+        }
+        function rt_onVoiceChange(){
+          const sel = document.getElementById('rtVoicePrefix');
+          if (sel) {
+            rt_voicePrefix = sel.value;
+            rt_updateVoiceExample();
+            rt_loadReinforceSounds();
+          }
+        }
+        function rt_onFirstSecChange(){
+          const sel = document.getElementById('rtFirstCallSec');
+          if (sel) {
+            rt_firstCallSec = parseInt(sel.value, 10) || rt_firstCallSec;
+            const lbl = document.getElementById('rtFirstSecDisplay');
+            if (lbl) lbl.textContent = `${rt_firstCallSec}s`;
+            rt_updateVoiceExample();
+          }
+        }
+        function rt_renderFirstCallOptions(){
+          const sel = document.getElementById('rtFirstCallSec');
+          if (!sel) return;
+          const secs = Array.from(rt_reinforceBySec.keys()).sort((a,b)=>b-a);
+          sel.innerHTML = '';
+          secs.forEach(s => {
+            const opt = document.createElement('option');
+            opt.value = s; opt.textContent = `${s}s`; sel.appendChild(opt);
+          });
+          if (!secs.includes(rt_firstCallSec)) {
+            rt_firstCallSec = secs.includes(50) ? 50 : (secs[0] || 50);
+          }
+          sel.value = String(rt_firstCallSec);
+          const lbl = document.getElementById('rtFirstSecDisplay');
+          if (lbl) lbl.textContent = `${rt_firstCallSec}s`;
+          rt_updateVoiceExample();
+        }
+
+        // ===== General UI =====
         function showSection(section) {
             document.getElementById('serversSection').classList.add('hidden');
             document.getElementById('logsSection').classList.add('hidden');
-            document.getElementById('showServers').classList.remove('btn-primary');
-            document.getElementById('showLogs').classList.remove('btn-primary');
-            document.getElementById('showServers').classList.add('btn-secondary');
-            document.getElementById('showLogs').classList.add('btn-secondary');
-            document.getElementById('logCategoryButtons').style.display = 'none'; // Hide log category buttons by default
+            document.getElementById('rallySection').classList.add('hidden');
+
+            ['showServers','showLogs','showRally'].forEach(id => {
+                const btn = document.getElementById(id);
+                if (btn) { btn.classList.remove('btn-primary'); btn.classList.add('btn-secondary'); }
+            });
+
+            document.getElementById('logCategoryButtons').style.display = 'none';
 
             if (section === 'servers') {
                 document.getElementById('serversSection').classList.remove('hidden');
                 document.getElementById('showServers').classList.add('btn-primary');
+                document.getElementById('showServers').classList.remove('btn-secondary');
             } else if (section === 'logs') {
                 document.getElementById('logsSection').classList.remove('hidden');
                 document.getElementById('showLogs').classList.add('btn-primary');
-                document.getElementById('logCategoryButtons').style.display = 'block'; // Show log category buttons when logs are active
+                document.getElementById('showLogs').classList.remove('btn-secondary');
+                document.getElementById('logCategoryButtons').style.display = 'block';
+            } else if (section === 'rally') {
+                document.getElementById('rallySection').classList.remove('hidden');
+                document.getElementById('showRally').classList.add('btn-primary');
+                document.getElementById('showRally').classList.remove('btn-secondary');
+
+                document.getElementById('rtSyncLead').value = String(rt_syncLeadMs);
+                const chLead = document.getElementById('rtChainLead');
+                if (chLead) chLead.value = String(rt_chainLeadMs);
+                const fbTol = document.getElementById('rtFallbackTol');
+                if (fbTol) fbTol.value = String(rt_fallbackTolSec);
+                const vpSel = document.getElementById('rtVoicePrefix');
+                if (vpSel) vpSel.value = rt_voicePrefix;
+                const firstSel = document.getElementById('rtFirstCallSec');
+                if (firstSel) firstSel.value = String(rt_firstCallSec);
+                const lbl = document.getElementById('rtFirstSecDisplay');
+                if (lbl) lbl.textContent = `${rt_firstCallSec}s`;
+
+                rt_updateVoiceExample();
+                pl_render();
+                rt_renderStarterSelect();
+                rt_render();
+                setupKeyboardUX(); // enable keyboard UX when showing Rally section
             }
         }
 
@@ -108,17 +328,15 @@
             messageBox.innerText = message;
             messageBox.className = `alert alert-${type}`;
             messageBox.style.display = 'block';
-            setTimeout(() => {
-                messageBox.style.display = 'none';
-            }, 5000);
+            setTimeout(() => { messageBox.style.display = 'none'; }, 4000);
         }
 
+        // ===== Servers / Channels / Logs (unchanged) =====
         async function loadGuilds() {
             const response = await fetch('/api/guilds');
             const guilds = await response.json();
             const guildsContainer = document.getElementById('guilds');
             guildsContainer.innerHTML = '';
-
             guilds.forEach(guild => {
                 const guildTab = document.createElement('a');
                 guildTab.className = 'nav-item nav-link tab';
@@ -132,240 +350,656 @@
                 guildsContainer.appendChild(guildTab);
             });
         }
-
         async function loadChannels(guildId) {
             const response = await fetch(`/api/channels/${guildId}`);
             const channels = await response.json();
             const channelsContainer = document.getElementById('channels');
             channelsContainer.innerHTML = '';
+            if (channels.error) { displayMessage(channels.error, 'danger'); return; }
 
-            if (channels.error) {
-                displayMessage(channels.error, 'danger');
-            } else {
-                // Add control buttons
-                const controlsRow = document.createElement('div');
-                controlsRow.className = 'mb-3';
-
-                const leaveButton = document.createElement('button');
-                leaveButton.className = 'btn btn-danger mr-2';
-                leaveButton.innerText = 'Leave Voice Channel';
-                leaveButton.onclick = () => leaveChannel();
-
-                const stopButton = document.createElement('button');
-                stopButton.className = 'btn btn-secondary mr-2';
-                stopButton.innerText = 'Stop Playing';
-                stopButton.onclick = () => stopPlaying();
-
-                controlsRow.appendChild(leaveButton);
-                controlsRow.appendChild(stopButton);
-
-                // Fetch and add sound play buttons
-                const responseSounds = await fetch('/api/sounds');
-                const sounds = await responseSounds.json();
-                sounds.forEach(sound => {
-                    const playButton = document.createElement('button');
-                    playButton.className = 'btn btn-secondary btn-sound mr-2';
-                    playButton.innerText = `Play ${sound}`;
-                    playButton.onclick = () => playSound(guildId, sound);
-                    controlsRow.appendChild(playButton);
-                });
-
-                channelsContainer.appendChild(controlsRow);
-
-                // Create table for channels
-                const table = document.createElement('table');
-                table.className = 'table table-striped';
-
-                const thead = document.createElement('thead');
-                thead.innerHTML = `
-                    <tr>
-                        <th>Channel Name</th>
-                        <th>Channel ID</th>
-                        <th>Action</th>
-                    </tr>
-                `;
-                table.appendChild(thead);
-
-                const tbody = document.createElement('tbody');
-                channels.forEach(channel => {
-                    const row = document.createElement('tr');
-
-                    const channelNameCell = document.createElement('td');
-                    channelNameCell.innerText = channel.name;
-
-                    const channelIdCell = document.createElement('td');
-                    channelIdCell.innerText = channel.id;
-
-                    const actionCell = document.createElement('td');
-                    const joinButton = document.createElement('button');
-                    joinButton.className = 'btn btn-primary';
-                    joinButton.innerText = 'Join Channel';
-                    joinButton.onclick = () => joinChannel(guildId, channel.id);
-                    actionCell.appendChild(joinButton);
-
-                    row.appendChild(channelNameCell);
-                    row.appendChild(channelIdCell);
-                    row.appendChild(actionCell);
-
-                    tbody.appendChild(row);
-                });
-
-                table.appendChild(tbody);
-                channelsContainer.appendChild(table);
-            }
-        }
-
-
-        async function displayControls(serverId) {
-            const controlsContainer = document.getElementById('controls');
-            controlsContainer.innerHTML = '';
-
+            const controlsRow = document.createElement('div');
+            controlsRow.className = 'mb-3';
             const leaveButton = document.createElement('button');
-            leaveButton.className = 'btn btn-danger';
+            leaveButton.className = 'btn btn-danger mr-2';
             leaveButton.innerText = 'Leave Voice Channel';
             leaveButton.onclick = () => leaveChannel();
-
             const stopButton = document.createElement('button');
-            stopButton.className = 'btn btn-secondary';
+            stopButton.className = 'btn btn-secondary mr-2';
             stopButton.innerText = 'Stop Playing';
             stopButton.onclick = () => stopPlaying();
+            controlsRow.appendChild(leaveButton); controlsRow.appendChild(stopButton);
 
-            controlsContainer.appendChild(leaveButton);
-            controlsContainer.appendChild(stopButton);
-
-            const response = await fetch('/api/sounds');
-            const sounds = await response.json();
-
+            const responseSounds = await fetch('/api/sounds');
+            const sounds = await responseSounds.json();
             sounds.forEach(sound => {
                 const playButton = document.createElement('button');
-                playButton.className = 'btn btn-secondary btn-sound';
+                playButton.className = 'btn btn-secondary btn-sound mr-2';
                 playButton.innerText = `Play ${sound}`;
-                playButton.onclick = () => playSound(serverId, sound);
-                controlsContainer.appendChild(playButton);
+                playButton.onclick = () => playSound(guildId, sound);
+                controlsRow.appendChild(playButton);
             });
-        }
+            channelsContainer.appendChild(controlsRow);
 
+            const table = document.createElement('table');
+            table.className = 'table table-striped';
+            const thead = document.createElement('thead');
+            thead.innerHTML = `<tr><th>Channel Name</th><th>Channel ID</th><th>Action</th></tr>`;
+            table.appendChild(thead);
+            const tbody = document.createElement('tbody');
+            channels.forEach(channel => {
+                const row = document.createElement('tr');
+                const channelNameCell = document.createElement('td'); channelNameCell.innerText = channel.name;
+                const channelIdCell = document.createElement('td'); channelIdCell.innerText = channel.id;
+                const actionCell = document.createElement('td');
+                const joinButton = document.createElement('button');
+                joinButton.className = 'btn btn-primary'; joinButton.innerText = 'Join Channel';
+                joinButton.onclick = () => joinChannel(guildId, channel.id);
+                actionCell.appendChild(joinButton);
+                row.appendChild(channelNameCell); row.appendChild(channelIdCell); row.appendChild(actionCell);
+                tbody.appendChild(row);
+            });
+            table.appendChild(tbody);
+            channelsContainer.appendChild(table);
+        }
         async function joinChannel(guildId, channelId) {
-            const response = await fetch('/api/join', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ guildId, channelId })
-            });
+            const response = await fetch('/api/join', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ guildId, channelId }) });
             const result = await response.json();
-            if (response.ok) {
-                selectedChannelId = channelId;
-                displayMessage(result.message, 'success');
-            } else {
-                displayMessage(result.error || 'Failed to join the channel', 'danger');
-            }
+            if (response.ok) { selectedChannelId = channelId; displayMessage(result.message, 'success'); }
+            else { displayMessage(result.error || 'Failed to join the channel', 'danger'); }
         }
-
         async function leaveChannel() {
             const response = await fetch('/api/leave', { method: 'POST' });
             const result = await response.json();
-            if (response.ok) {
-                selectedChannelId = null;
-                displayMessage(result.message, 'success');
-            } else {
-                displayMessage(result.error || 'Failed to leave the channel', 'danger');
-            }
+            if (response.ok) { selectedChannelId = null; displayMessage(result.message, 'success'); }
+            else { displayMessage(result.error || 'Failed to leave the channel', 'danger'); }
         }
-
         async function stopPlaying() {
             const response = await fetch('/api/stop', { method: 'POST' });
             const result = await response.json();
-            if (response.ok) {
-                displayMessage(result.message, 'success');
-            } else {
-                displayMessage(result.error || 'Failed to stop playing', 'danger');
-            }
+            if (response.ok) displayMessage(result.message, 'success');
+            else displayMessage(result.error || 'Failed to stop playing', 'danger');
         }
-
         async function playSound(serverId, sound) {
-            const response = await fetch('/api/play', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ guildId: serverId, sound })
-            });
+            const response = await fetch('/api/play', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ guildId: serverId, sound }) });
             const result = await response.json();
-            if (response.ok) {
-                displayMessage(result.message, 'success');
-            } else {
-                displayMessage(result.error || 'Failed to play the sound', 'danger');
-            }
+            if (response.ok) displayMessage(result.message, 'success');
+            else displayMessage(result.error || 'Failed to play the sound', 'danger');
         }
-
         async function fetchLogs() {
             const response = await fetch(`/api/logs?last_log_id=${lastLogId}`);
             const logs = await response.json();
             const logsContainer = document.getElementById('logs');
             let newLogsAdded = false;
-
             Object.values(logs).forEach(log => {
                 const logRow = document.createElement('tr');
                 logRow.className = `log-entry log-category log_category_${log.category}`;
-
-                logRow.innerHTML = `
-                    <td>${log.timestamp}</td>
-                    <td>${log.severity}</td>
-                    <td>${log.category}</td>
-                    <td>${log.message}</td>
-                `;
-
+                logRow.innerHTML = `<td>${log.timestamp}</td><td>${log.severity}</td><td>${log.category}</td><td>${log.message}</td>`;
                 logsContainer.appendChild(logRow);
                 categories.add(log.category);
                 lastLogId = Math.max(lastLogId, log.id);
                 newLogsAdded = true;
             });
-
-            if (newLogsAdded) {
-                updateCategoryButtons();
-                const activeButton = document.querySelector('#logCategoryButtons .btn.active-category');
-                const activeCategory = activeButton ? activeButton.innerText.toLowerCase() : 'all';
-                filterLogsByCategory(activeCategory);
-            }
+            if (newLogsAdded) { updateCategoryButtons(); const activeButton = document.querySelector('#logCategoryButtons .btn.active-category'); const activeCategory = activeButton ? activeButton.innerText.toLowerCase() : 'all'; filterLogsByCategory(activeCategory); }
         }
-
         function updateCategoryButtons() {
             const logCategoryButtons = document.getElementById('logCategoryButtons');
             logCategoryButtons.innerHTML = '';
-
             categories.forEach(category => {
                 const button = document.createElement('button');
                 button.className = 'btn btn-outline-primary';
                 button.innerText = category === 'all' ? 'All' : category;
-                button.onclick = () => {
-                    filterLogsByCategory(category);
-                    highlightActiveButton(button);
-                };
+                button.onclick = () => { filterLogsByCategory(category); highlightActiveButton(button); };
                 logCategoryButtons.appendChild(button);
             });
         }
+        function highlightActiveButton(activeButton) { document.querySelectorAll('#logCategoryButtons .btn').forEach(b => b.classList.remove('active-category')); activeButton.classList.add('active-category'); }
+        function filterLogsByCategory(category) { document.querySelectorAll('.log-entry').forEach(row => { row.style.display = (category === 'all' || row.classList.contains(`log_category_${category}`)) ? 'table-row' : 'none'; }); }
 
-        function highlightActiveButton(activeButton) {
-            document.querySelectorAll('#logCategoryButtons .btn').forEach(button => {
-                button.classList.remove('active-category');
-            });
-            activeButton.classList.add('active-category');
+        // ===== Players (March Times) =====
+        function pl_load() { try { pl_players = JSON.parse(localStorage.getItem('rt_players') || '[]'); } catch { pl_players = []; } }
+        function pl_save() {
+            const data = pl_players.map(({id,name,secs}) => ({id,name,secs}));
+            localStorage.setItem('rt_players', JSON.stringify(data));
         }
-
-        function filterLogsByCategory(category) {
-            document.querySelectorAll('.log-entry').forEach(row => {
-                row.style.display = (category === 'all' || row.classList.contains(`log_category_${category}`)) ? 'table-row' : 'none';
-            });
+        function pl_add() {
+            const name = document.getElementById('plName').value.trim();
+            const secs = parseInt(document.getElementById('plSecs').value, 10);
+            if (!name || isNaN(secs) || secs < 0) { displayMessage('Please enter a name and march time (seconds).', 'danger'); return; }
+            const id = Date.now() + '_' + Math.random().toString(36).slice(2,7);
+            pl_players.push({ id, name, secs });
+            document.getElementById('plName').value = '';
+            document.getElementById('plSecs').value = '';
+            pl_save(); pl_render(); rt_renderStarterSelect();
         }
-
-        // Periodically refresh guilds and channels
-        setInterval(() => {
-            loadGuilds();
-            if (selectedGuildId) {
-                loadChannels(selectedGuildId);
+        function pl_startEdit(id) { const p = pl_players.find(x => x.id === id); if (!p) return; p._editing = true; pl_render(); }
+        function pl_saveEdit(id) {
+            const nameInput = document.getElementById(`pl_edit_name_${id}`);
+            const secsInput = document.getElementById(`pl_edit_secs_${id}`);
+            if (!nameInput || !secsInput) return;
+            const name = nameInput.value.trim();
+            const secs = parseInt(secsInput.value, 10);
+            if (!name || isNaN(secs) || secs < 0) { displayMessage('Please enter a valid name and seconds.', 'danger'); return; }
+            const p = pl_players.find(x => x.id === id); if (!p) return;
+            p.name = name; p.secs = secs; delete p._editing; pl_save(); pl_render(); rt_renderStarterSelect();
+        }
+        function pl_cancelEdit(id) { const p = pl_players.find(x => x.id === id); if (!p) return; delete p._editing; pl_render(); }
+        function pl_adjust(id, delta) { const p = pl_players.find(x => x.id === id); if (!p) return; p.secs = Math.max(0, p.secs + delta); pl_save(); pl_render(); rt_renderStarterSelect(); }
+        function pl_delete(id) { pl_players = pl_players.filter(x => x.id !== id); pl_save(); pl_render(); rt_renderStarterSelect(); }
+        function pl_render() {
+            const ul = document.getElementById('playersList'); ul.innerHTML = '';
+            if (pl_players.length === 0) {
+                const li = document.createElement('li'); li.className = 'list-group-item text-muted'; li.textContent = 'No entries yet.'; ul.appendChild(li); return;
             }
-        }, 2000); // Refresh every 2 seconds
+            pl_players.forEach(p => {
+                const li = document.createElement('li'); li.className = 'list-group-item';
+                if (p._editing) {
+                    const left = document.createElement('div'); left.className = 'edit-inline';
+                    left.innerHTML = `<input id="pl_edit_name_${p.id}" class="form-control"> <input id="pl_edit_secs_${p.id}" type="number" class="form-control">`;
+                    left.querySelector(`#pl_edit_name_${p.id}`).value = p.name;
+                    left.querySelector(`#pl_edit_secs_${p.id}`).value = p.secs;
+                    const right = document.createElement('div');
+                    right.innerHTML = `
+                        <button class="btn btn-sm btn-success" onclick="pl_saveEdit('${p.id}')">Save</button>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="pl_cancelEdit('${p.id}')">Cancel</button>`;
+                    li.appendChild(left); li.appendChild(right);
+                } else {
+                    const left = document.createElement('div');
+                    const nameSpan = document.createElement('span');
+                    nameSpan.className = 'name';
+                    nameSpan.textContent = p.name;
+                    const secsSpan = document.createElement('span');
+                    secsSpan.className = 'secs';
+                    secsSpan.textContent = `${p.secs}s`;
+                    left.append(nameSpan, ': ', secsSpan);
+                    const right = document.createElement('div');
+                    right.innerHTML = `
+                        <button class="btn btn-sm btn-outline-secondary" onclick="pl_startEdit('${p.id}')">Edit</button>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="pl_adjust('${p.id}', 1)">+1s</button>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="pl_adjust('${p.id}', -1)">-1s</button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="pl_delete('${p.id}')">Delete</button>`;
+                    li.appendChild(left); li.appendChild(right);
+                }
+                ul.appendChild(li);
+            });
+        }
+        function rt_renderStarterSelect() {
+            const sel = document.getElementById('rtStarterSelect'); sel.innerHTML = '';
+            if (pl_players.length === 0) {
+                const opt = document.createElement('option'); opt.textContent = '— add players first —'; sel.appendChild(opt); sel.disabled = true; return;
+            }
+            sel.disabled = false;
+            pl_players.forEach(p => { const opt = document.createElement('option'); opt.value = p.id; opt.textContent = `${p.name} (${p.secs}s)`; sel.appendChild(opt); });
+        }
 
+        // ===== Voice files & chain helpers =====
+        async function rt_loadReinforceSounds() {
+            try {
+                const resp = await fetch('/api/sounds');
+                const list = await resp.json();
+
+                // Build available voice prefixes from files named name-language-start-end
+                const prefixesSet = new Set();
+                list.forEach(name => {
+                    const parts = name.split('-');
+                    if (parts.length >= 4) {
+                        const start = parseInt(parts[2], 10);
+                        const end = parseInt(parts[3], 10);
+                        if (!isNaN(start) && !isNaN(end)) {
+                            prefixesSet.add(`${parts[0]}-${parts[1]}`);
+                        }
+                    }
+                });
+                rt_voicePrefixes = Array.from(prefixesSet).sort();
+
+                // Populate dropdown
+                const sel = document.getElementById('rtVoicePrefix');
+                if (sel) {
+                    sel.innerHTML = '';
+                    rt_voicePrefixes.forEach(p => {
+                        const opt = document.createElement('option');
+                        opt.value = p; opt.textContent = p; sel.appendChild(opt);
+                    });
+                    if (!rt_voicePrefixes.includes(rt_voicePrefix)) {
+                        rt_voicePrefix = rt_voicePrefixes[0] || 'countdown-en';
+                        localStorage.setItem('rt_voicePrefix', rt_voicePrefix);
+                    }
+                    sel.value = rt_voicePrefix;
+                }
+                rt_updateVoiceExample();
+
+                // Build seconds→file map for selected prefix
+                const map = new Map();
+                list.filter(n => n.startsWith(rt_voicePrefix + '-')).forEach(name => {
+                    const parts = name.split('-');
+                    if (parts.length >= 4) {
+                        const sec = parseInt(parts[2], 10);
+                        if (!isNaN(sec) && sec >= 10 && sec <= 60) {
+                            if (!map.has(sec)) map.set(sec, []);
+                            map.get(sec).push(name);
+                        }
+                    }
+                });
+                rt_reinforceBySec = map;
+                rt_reinforceLoaded = true;
+
+                // Populate first-call seconds based on this pack
+                rt_renderFirstCallOptions();
+            } catch (e) { console.error('Failed to load voice files', e); }
+        }
+        function rt_extractSecondsFromName(name) {
+            const parts = name.split('-');
+            for (let i = 0; i < parts.length; i++) {
+                const n = parseInt(parts[i], 10);
+                if (!isNaN(n) && n >= 10 && n <= 60) return n;
+            }
+            return null;
+        }
+        function rt_pickReinforceForSeconds(sec) {
+            const arr = rt_reinforceBySec.get(sec);
+            if (!arr || arr.length === 0) return null;
+            const preferred = arr.find(s => s.includes('-en-') && /-0$/.test(s))
+                           || arr.find(s => /-0$/.test(s))
+                           || arr[0];
+            return preferred;
+        }
+        function rt_pickReinforceNearest(sec, toleranceSec = rt_fallbackTolSec) {
+            const keys = Array.from(rt_reinforceBySec.keys()).sort((a,b)=>a-b);
+            if (keys.length === 0) return null;
+
+            // Prefer floor <= sec within tolerance
+            let floor = null;
+            for (let i = 0; i < keys.length; i++) {
+                const k = keys[i];
+                if (k <= sec) floor = k; else break;
+            }
+            if (floor != null && (sec - floor) <= toleranceSec) {
+                return rt_pickReinforceForSeconds(floor);
+            }
+
+            // Else absolute nearest within tolerance
+            let nearest = null, best = Infinity;
+            for (const k of keys) {
+                const d = Math.abs(k - sec);
+                if (d < best) { best = d; nearest = k; }
+            }
+            if (best <= toleranceSec) return rt_pickReinforceForSeconds(nearest);
+            return null;
+        }
+        function rt_chainStart(rally) {
+            rt_chain.active = true;
+            rt_chain.anchorRallyId = rally.id;
+            rt_chain.processedAt = rally.hitAt; // anchor at this rally's land time
+            if (!rt_reinforceLoaded) rt_loadReinforceSounds();
+        }
+        function rt_chainUpdate(now) {
+            if (!rt_chain.active) return;
+
+            // Next rally after the processed anchor
+            const next = [...rt_rallies]
+                .filter(r => r.hitAt > rt_chain.processedAt)
+                .sort((a,b) => a.hitAt - b.hitAt)[0];
+
+            if (!next) { rt_chain.active = false; return; }
+
+            const deltaSec = Math.round((next.hitAt - rt_chain.processedAt) / 1000);
+            let sound = rt_pickReinforceForSeconds(deltaSec);
+            if (!sound) sound = rt_pickReinforceNearest(deltaSec);
+            if (!sound) {
+                // Nothing usable — skip to the next rally
+                rt_chain.processedAt = next.hitAt;
+                return;
+            }
+
+            const chosenSec = rt_extractSecondsFromName(sound) ?? deltaSec;
+
+            // Wait until the gap reaches chosenSec (never earlier), then apply chain lead (ms)
+            const chainLead = Math.max(0, rt_chainLeadMs);
+            const waitMs = Math.max(0, (deltaSec - chosenSec) * 1000 - chainLead);
+            const fireAt = rt_chain.processedAt + waitMs;
+
+            if (now < fireAt) return; // not yet time
+
+            if (!selectedGuildId) {
+                displayMessage('Select a server and join a voice channel first (no guild selected).', 'warning');
+                rt_chain.processedAt = next.hitAt;
+                return;
+            }
+            playSound(selectedGuildId, sound);
+            rt_chain.processedAt = next.hitAt; // advance anchor to this rally's land
+        }
+
+        // ===== Rallies =====
+        function rt_save() { localStorage.setItem('rt_rallies', JSON.stringify(rt_rallies)); }
+        function rt_load() { try { rt_rallies = JSON.parse(localStorage.getItem('rt_rallies') || '[]'); } catch { rt_rallies = []; } }
+        function msToClock(ms) { const s = Math.max(0, Math.floor(ms/1000)); const m = Math.floor(s/60); const r = s%60; return `${m}m ${r}s`; }
+
+        function rt_saveSyncLead() {
+            const v1 = parseInt(document.getElementById('rtSyncLead').value, 10);
+            const v2 = parseInt(document.getElementById('rtChainLead').value, 10);
+            const v3 = parseInt(document.getElementById('rtFallbackTol').value, 10);
+            const vpSel = document.getElementById('rtVoicePrefix');
+            const secSel = document.getElementById('rtFirstCallSec');
+
+            const vp = vpSel && vpSel.value ? vpSel.value : rt_voicePrefix;
+            const firstSec = secSel && secSel.value ? parseInt(secSel.value, 10) : rt_firstCallSec;
+
+            rt_syncLeadMs  = isNaN(v1) ? 0 : v1;
+            rt_chainLeadMs = isNaN(v2) ? 0 : v2;
+            rt_fallbackTolSec = (isNaN(v3) || v3 < 0) ? 5 : v3;
+            rt_voicePrefix = vp;
+            rt_firstCallSec = isNaN(firstSec) ? rt_firstCallSec : firstSec;
+
+            localStorage.setItem('rt_syncLeadMs',  String(rt_syncLeadMs));
+            localStorage.setItem('rt_chainLeadMs', String(rt_chainLeadMs));
+            localStorage.setItem('rt_fallbackTolSec', String(rt_fallbackTolSec));
+            localStorage.setItem('rt_voicePrefix', rt_voicePrefix);
+            localStorage.setItem('rt_firstCallSec', String(rt_firstCallSec));
+
+            rt_updateVoiceExample();
+            rt_loadReinforceSounds();
+
+            displayMessage(`Saved — voice: ${rt_voicePrefix}, first call: ${rt_firstCallSec}s, first lead: ${rt_syncLeadMs} ms, chain lead: ${rt_chainLeadMs} ms, fallback: ${rt_fallbackTolSec}s`, 'success');
+        }
+        function rt_toggleMode(){ displayMessage('Time mode active (launch duration).', 'info'); }
+
+        function rt_startRally() {
+            if (pl_players.length === 0) { displayMessage('Please add players first.', 'danger'); return; }
+            const starterId = document.getElementById('rtStarterSelect').value;
+            const player = pl_players.find(p => p.id === starterId);
+            if (!player) { displayMessage('Invalid starter.', 'danger'); return; }
+            const min = parseInt(document.getElementById('rtLaunchMin').value, 10) || 0;
+            const sec = parseInt(document.getElementById('rtLaunchSec').value, 10) || 0;
+            const launchMs = (min*60 + sec) * 1000;
+            const now = Date.now();
+            const launchEndAt = now + launchMs;
+            const hitAt = launchEndAt + player.secs * 1000;
+            const id = 'r' + now + '_' + Math.random().toString(36).slice(2,6);
+            rt_rallies.push({ id, starterId, starterName: player.name, marchSec: player.secs, launchEndAt, hitAt, triggered50:false, lastLandMs:null });
+            rt_save(); rt_render();
+        }
+        function rt_adjustLaunch(id, deltaSec) {
+            const r = rt_rallies.find(x => x.id === id); if (!r) return;
+            r.launchEndAt += deltaSec * 1000; if (r.launchEndAt < Date.now()) r.launchEndAt = Date.now();
+            r.hitAt = r.launchEndAt + r.marchSec*1000; rt_save(); rt_render();
+        }
+        function rt_delete(id) { rt_rallies = rt_rallies.filter(x => x.id !== id); rt_save(); rt_render(); }
+        function rt_render() {
+            const wrap = document.getElementById('rtActive'); wrap.innerHTML = '';
+            if (rt_rallies.length === 0) { wrap.innerHTML = '<div class="alert alert-info">No rallies started yet.</div>'; return; }
+            rt_rallies.sort((a,b)=>a.hitAt-b.hitAt);
+            const now = Date.now();
+            rt_rallies.forEach(r => {
+                const launchRemain = r.launchEndAt - now;
+                const landRemain = r.hitAt - now;
+
+                // Build static markup WITHOUT user data, then inject user data via textContent (XSS-safe)
+                const card = document.createElement('div');
+                card.className = 'card rally-card card-soft mb-3';
+                card.innerHTML = `
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div class="title"></div>
+                            <button class="btn btn-sm btn-danger" onclick="rt_delete('${r.id}')">Delete</button>
+                        </div>
+                        <div class="rally-times mt-3">
+                            <div class="block">
+                                <span class="mr-2">Launch:</span>
+                                <span class="mono" data-launch-remaining="${r.id}">${msToClock(launchRemain)}</span>
+                                <button class="btn btn-sm btn-outline-secondary ml-2" onclick="rt_adjustLaunch('${r.id}', -1)">-1s</button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="rt_adjustLaunch('${r.id}', +1)">+1s</button>
+                                <span class="small-muted ml-2">(${Math.max(0, Math.floor(launchRemain/1000))}s)</span>
+                            </div>
+                            <div class="block ml-2">
+                                <span class="mr-2">Land:</span>
+                                <span class="mono" data-land-remaining="${r.id}">${msToClock(landRemain)}</span>
+                                <span class="small-muted ml-2">(${Math.max(0, Math.floor(landRemain/1000))}s)</span>
+                            </div>
+                        </div>
+                    </div>`;
+                // Safely inject the user-provided starter name
+                card.querySelector('.title').textContent = r.starterName;
+
+                wrap.appendChild(card);
+            });
+        }
+
+        // --- Keyboard UX: tab loop + Enter + ":" / "." / "," hop ---
+        function setupKeyboardUX(){
+          const starter = document.getElementById('rtStarterSelect');
+          const min = document.getElementById('rtLaunchMin');
+          const sec = document.getElementById('rtLaunchSec');
+          if (!starter || !min || !sec) return;
+
+          // Helper: try to select the input's content (type=number can be finicky across browsers)
+          function scheduleSelectOrArm(el){
+            // Try a couple of async attempts to beat browser timing
+            setTimeout(() => { try { el.select(); } catch(_) {} }, 0);
+            if (window.requestAnimationFrame) {
+              requestAnimationFrame(() => { try { el.select(); } catch(_) {} });
+            }
+            // Fallback: if selection isn't supported (e.g., number inputs), arm an overwrite-on-first-typed-digit
+            el.dataset.rtArmOverwrite = '1';
+          }
+          function focusAndSelect(el){
+            el.focus();
+            scheduleSelectOrArm(el);
+          }
+
+          // Track if focus arrived via TAB (or Shift+TAB)
+          if (!window.__rtTabTrackerBound) {
+            document.addEventListener('keydown', (e) => {
+              if (e.key === 'Tab') {
+                window.__rtLastKeyWasTab = true;
+              } else if (e.key !== 'Shift') {
+                window.__rtLastKeyWasTab = false;
+              }
+            });
+            window.__rtTabTrackerBound = true;
+          }
+
+          // When tabbing into minutes/seconds, select the whole content so typing overwrites
+          min.onfocus = () => {
+            if (window.__rtLastKeyWasTab) scheduleSelectOrArm(min);
+          };
+          sec.onfocus = () => {
+            if (window.__rtLastKeyWasTab) scheduleSelectOrArm(sec);
+          };
+
+          // Starter: Tab -> Minutes, Shift+Tab -> Seconds (wrap), Enter -> Minutes (select)
+          starter.onkeydown = (e) => {
+            if (e.key === 'Tab') {
+              e.preventDefault();
+              if (e.shiftKey) {
+                sec.focus();             // backwards wrap
+              } else {
+                min.focus();             // forward
+              }
+            } else if (e.key === 'Enter') {
+              e.preventDefault();
+              focusAndSelect(min);
+            }
+          };
+
+          // Minutes: Tab/Shift+Tab loop, Enter starts + focus Starter, ':'/'.'/',' jumps to Seconds (select)
+          min.onkeydown = (e) => {
+            // If we armed overwrite and user types a digit, clear value so next key becomes the new value
+            if (min.dataset.rtArmOverwrite === '1' && /^[0-9]$/.test(e.key)) {
+              min.value = '';
+              min.dataset.rtArmOverwrite = '0';
+            }
+
+            if (e.key === 'Tab') {
+              e.preventDefault();
+              if (e.shiftKey) {
+                starter.focus();         // back
+              } else {
+                sec.focus();             // forward
+              }
+            } else if (e.key === 'Enter') {
+              e.preventDefault();
+              rt_startRally();
+              starter.focus();           // move back to starter after logic
+            } else if (e.key === ':' || e.key === '.' || e.key === ',') {
+              e.preventDefault();        // don't insert the character
+              focusAndSelect(sec);
+            }
+          };
+
+          // Seconds: Tab -> Starter (wrap), Shift+Tab -> Minutes, Enter starts + focus Starter
+          sec.onkeydown = (e) => {
+            if (sec.dataset.rtArmOverwrite === '1' && /^[0-9]$/.test(e.key)) {
+              sec.value = '';
+              sec.dataset.rtArmOverwrite = '0';
+            }
+
+            if (e.key === 'Tab') {
+              e.preventDefault();
+              if (e.shiftKey) {
+                min.focus();             // back
+              } else {
+                starter.focus();         // forward wrap
+              }
+            } else if (e.key === 'Enter') {
+              e.preventDefault();
+              rt_startRally();
+              starter.focus();           // move back to starter after logic
+            }
+          };
+
+          // Global ESC to stop audio (bind once)
+          if (!window.__rtEscBound) {
+            document.addEventListener('keydown', (e) => {
+              if (e.key === 'Escape') {
+                try { rt_stopAudio(); } catch(_) {}
+              }
+            });
+            window.__rtEscBound = true;
+          }
+        }
+
+        async function rt_tryTrigger50s(rally) { // (kept name for compatibility)
+            if (!selectedGuildId) { displayMessage('Select a server and join a voice channel first (no guild selected).', 'warning'); return false; }
+            try {
+                const response = await fetch('/api/play', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ guildId: selectedGuildId, sound: `${rt_voicePrefix}-${rt_firstCallSec}-0` })
+                });
+                const result = await response.json();
+                if (response.ok) { displayMessage(result.message || `Triggered ${rt_firstCallSec}s call.`, 'success'); return true; }
+                displayMessage(result.error || 'Failed to trigger voice file.', 'danger'); return false;
+            } catch(e) { console.error(e); displayMessage('Error calling /api/play', 'danger'); return false; }
+        }
+
+        function rt_tick() {
+            const now = Date.now();
+            const threshold = (rt_firstCallSec * 1000) + rt_syncLeadMs;
+
+            // Safety reset for chain
+            if (rt_chain.active) {
+                const anchor = rt_rallies.find(r => r.id === rt_chain.anchorRallyId);
+                if (!anchor && now > rt_chain.processedAt + 5000) {
+                    rt_chain.active = false;
+                }
+            }
+
+            let needsRender = false;
+            const crossers = [];
+            // NEW: track whether any rally is currently under the threshold window
+            let anyUnder = false;
+
+            rt_rallies.forEach(r => {
+                const launchRemain = r.launchEndAt - now;
+                const landRemain   = r.hitAt - now;
+
+                // Update UI
+                const s1 = document.querySelector(`span[data-launch-remaining="${r.id}"]`);
+                const s2 = document.querySelector(`span[data-land-remaining="${r.id}"]`);
+                if (s1) s1.textContent = msToClock(launchRemain);
+                if (s2) s2.textContent = msToClock(landRemain);
+
+                // Threshold window tracking
+                if (landRemain <= threshold) anyUnder = true;
+
+                // Crossing detection this tick (first-call threshold)
+                const crossed = landRemain <= threshold && (r.lastLandMs == null || r.lastLandMs > threshold);
+                if (!r.triggered50 && crossed) crossers.push(r);
+
+                r.lastLandMs = landRemain;
+
+                // Auto-remove after land
+                if (landRemain <= -5000) {
+                    needsRender = true;
+                    rt_rallies = rt_rallies.filter(x => x.id !== r.id);
+                    rt_save();
+                }
+            });
+
+            // Earliest-only trigger if no chain active and nothing pending, and gate is not active
+            if (!rt_chain.active && !rt_pendingFirst && crossers.length && !rt_windowActive) {
+                const earliest = crossers.sort((a,b) => a.hitAt - b.hitAt)[0];
+                rt_pendingFirst = true;
+                rt_windowActive = true; // open gating window so new crossers won't retrigger 50s
+                rt_tryTrigger50s(earliest).then(ok => {
+                    if (ok) {
+                        earliest.triggered50 = true; // (compat: means “first call done”)
+                        rt_chainStart(earliest);
+                        rt_save();
+                    }
+                }).finally(() => { rt_pendingFirst = false; });
+            }
+
+            // Close gating window when no rally is under threshold anymore
+            if (!anyUnder) {
+                rt_windowActive = false;
+            }
+
+            if (needsRender) rt_render();
+
+            // Continue sequential chain (C, D, …)
+            rt_chainUpdate(now);
+        }
+        setInterval(rt_tick, 100);
+
+        // Stop audio & reset helpers
+        function rt_stopAudio(){
+            try { stopPlaying(); } catch(e) { console.error(e); }
+        }
+        async function rt_resetAll(){
+            try { await fetch('/api/stop', { method: 'POST' }); } catch(e) { /* ignore */ }
+            rt_rallies = [];
+            rt_chain = { active: false, processedAt: 0, anchorRallyId: null };
+            rt_pendingFirst = false;
+            rt_windowActive = false; // also reset gate
+            rt_save();
+            rt_render();
+            displayMessage('All rallies cleared and audio stopped.', 'warning');
+        }
+
+        // ===== Init =====
+        function initRallyUI() { pl_load(); pl_render(); rt_renderStarterSelect(); rt_load(); rt_render(); }
+
+        setInterval(() => { loadGuilds(); if (selectedGuildId) { loadChannels(selectedGuildId); } }, 2000);
         setInterval(fetchLogs, 3000);
 
         loadGuilds();
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('rtSyncLead').value = String(rt_syncLeadMs);
+            const chLeadInit = document.getElementById('rtChainLead');
+            if (chLeadInit) chLeadInit.value = String(rt_chainLeadMs);
+            const fbTolInit = document.getElementById('rtFallbackTol');
+            if (fbTolInit) fbTolInit.value = String(rt_fallbackTolSec);
+            const vpInit = document.getElementById('rtVoicePrefix');
+            if (vpInit) vpInit.value = rt_voicePrefix;
+            const firstInit = document.getElementById('rtFirstCallSec');
+            if (firstInit) firstInit.value = String(rt_firstCallSec);
+            const firstLbl = document.getElementById('rtFirstSecDisplay');
+            if (firstLbl) firstLbl.textContent = `${rt_firstCallSec}s`;
+
+            initRallyUI();
+            rt_loadReinforceSounds();
+            rt_updateVoiceExample();
+            setupKeyboardUX(); // ensure handlers are bound on load
+        });
         showSection('servers');
     </script>
 </body>

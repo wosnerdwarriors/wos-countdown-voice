@@ -5,3 +5,6 @@ quart>=0.20.0
 flask>=3.0.0
 werkzeug>=2.1.0
 PyNaCl==1.5.0
+pyttsx3>=2.90
+pytest>=7.0
+pytest-asyncio>=0.21

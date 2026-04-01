@@ -1,20 +1,27 @@
 #!/usr/bin/env python3
 import logging
 import os
+import asyncio
 import discord
 from discord.ext import commands
 from discord.ui import Button, View
 import json
 import datetime
 import re
+from config_enums import (
+	DebugSection,
+	any_debug_section_enabled,
+	is_debug_category_enabled,
+	is_debug_section_enabled,
+)
 
 # Load configuration from config.json
 with open("config.json", "r") as config_file:
 	config = json.load(config_file)
 
-# Configure logging
+# Configure logging (start at INFO; elevate selectively below)
 logging.basicConfig(
-	level=logging.DEBUG,
+	level=logging.INFO,
 	format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
 	handlers=[logging.StreamHandler()]
 )
@@ -22,13 +29,36 @@ logger = logging.getLogger(__name__)
 global_logs = {}
 log_counter = 0  # Counter to generate unique IDs for logs
 
+# Playback state tracking for seek/skip feature
+# Keys per guild id:
+# {
+#   guild_id: {
+#       'sound': <basename>,
+#       'start_monotonic': <time.monotonic when current ffmpeg stream started>,
+#       'base_offset': <seconds already skipped when (re)starting>,
+#       'duration': <optional cached duration seconds>
+#   }
+# }
+playback_state = {}
+
+def _apply_logging_config():
+	# Control discord library verbosity
+	discord_debug = is_debug_section_enabled(config, DebugSection.DISCORD)
+	lib_level = logging.DEBUG if discord_debug else logging.WARNING
+	for name in ('discord', 'discord.client', 'discord.gateway', 'discord.state', 'discord.http'):
+		logging.getLogger(name).setLevel(lib_level)
+	# Our app logger: allow debug if any non-discord section wants debug
+	non_discord_sections = [section for section in DebugSection if section is not DebugSection.DISCORD]
+	any_app_debug = any_debug_section_enabled(config, non_discord_sections)
+	logging.getLogger('discord_bot').setLevel(logging.DEBUG if any_app_debug else logging.INFO)
+
+_apply_logging_config()
+
 # Configuration values
 bot_token = config.get("token")
 allowed_roles = config.get("roles-allowed-to-control-bot", [])
 purge_channel_ids = config.get("purge-and-repost-on-channel-ids", [])
 log_messages_to_keep = config.get("log-messages-to-keep",0)
-debug = config.get("debug", True)
-
 # Enable the required intents
 intents = discord.Intents.default()
 intents.message_content = True
@@ -46,6 +76,10 @@ def sort_sound_files(files):
 	return sorted(files, key=extract_number)
 
 # Helper function to log messages
+def is_debug_enabled(category: str) -> bool:
+	"""Return True when the requested debug category is enabled in the config."""
+	return is_debug_category_enabled(config, category)
+
 def log_message(message, severity="info", category="catchall"):
 	global log_counter
 	log_id = log_counter
@@ -68,9 +102,15 @@ def log_message(message, severity="info", category="catchall"):
 
 
 	if severity.lower() == "debug":
-		logger.debug(message)
+		if is_debug_enabled(category):
+			logger.debug(message)
 	elif severity.lower() == "info":
-		logger.info(message)
+		# Only emit INFO level logs to the main logger when that
+		# category's debug section is explicitly enabled. This keeps
+		# normal runs quiet while allowing per-category verbosity when
+		# requested in the config.
+		if is_debug_enabled(category):
+			logger.info(message)
 	elif severity.lower() == "warning":
 		logger.warning(message)
 	elif severity.lower() == "error":
@@ -89,8 +129,20 @@ class CustomLogHandler(logging.Handler):
 		log_message(message, severity=severity, category=record.name)
 
 discord_logger = logging.getLogger('discord')
-discord_logger.addHandler(CustomLogHandler())
-discord_logger.setLevel(logging.DEBUG)
+# Attach the custom handler only when Discord debug is enabled so we
+# don't mirror all library INFO/DEBUG traffic into our application logs
+# during normal runs.
+if is_debug_section_enabled(config, DebugSection.DISCORD):
+	discord_logger.addHandler(CustomLogHandler())
+	discord_logger.setLevel(logging.DEBUG)
+else:
+	# Keep discord library noise to warnings/errors unless explicitly
+	# requested in config.
+	# Remove any existing custom handlers if present.
+	for h in list(discord_logger.handlers):
+		if isinstance(h, CustomLogHandler):
+			discord_logger.removeHandler(h)
+	discord_logger.setLevel(logging.WARNING)
 
 # Define the bot class
 class MyBot(commands.Bot):
@@ -151,6 +203,8 @@ class ControlView(View):
 		join_button = Button(label="Join", style=discord.ButtonStyle.success, custom_id="join_button")
 		leave_button = Button(label="Leave", style=discord.ButtonStyle.danger, custom_id="leave_button")
 		stop_button = Button(label="Stop", style=discord.ButtonStyle.danger, custom_id="stop_button")
+		skip_back_button = Button(label="-1s", style=discord.ButtonStyle.secondary, custom_id="skip_back_button")
+		skip_forward_button = Button(label="+1s", style=discord.ButtonStyle.secondary, custom_id="skip_forward_button")
 
 		join_button.callback = self.join_callback
 		leave_button.callback = self.leave_callback
@@ -159,12 +213,18 @@ class ControlView(View):
 		self.add_item(join_button)
 		self.add_item(leave_button)
 		self.add_item(stop_button)
+		self.add_item(skip_back_button)
+		self.add_item(skip_forward_button)
 
-		# Limit to 22 sound buttons per message (since 3 control buttons are already used)
-		for sound in sorted_sounds[:22]:
+		# We now have 5 control buttons; Discord limit per action row set total components <=25
+		# So allow up to 20 sound buttons.
+		for sound in sorted_sounds[:20]:
 			button = Button(label=sound, style=discord.ButtonStyle.primary, custom_id=f"sound_{sound}")
 			button.callback = lambda interaction, s=sound: self.play_sound_callback(interaction, s)
 			self.add_item(button)
+
+		skip_back_button.callback = self.skip_back_callback
+		skip_forward_button.callback = self.skip_forward_callback
 
 
 	async def join_callback(self, interaction: discord.Interaction):
@@ -193,7 +253,26 @@ class ControlView(View):
 	async def stop_callback(self, interaction: discord.Interaction):
 		log_message("stop_callback called", category="stop_callback")
 		await stop_sound(interaction.guild)
-		await interaction.response.send_message("Stopped the current sound.", ephemeral=True)
+		# Acknowledge the interaction without sending a visible message
+		await interaction.response.defer()
+
+	async def skip_back_callback(self, interaction: discord.Interaction):
+		log_message("skip_back_callback called", category="skip")
+		# Call the local skip_playback function directly to avoid intra-module import
+		ok = await skip_playback(interaction.guild, -1.0)
+		if not ok:
+			await interaction.response.send_message("Cannot skip - no active sound.", ephemeral=True)
+		else:
+			await interaction.response.defer()
+
+	async def skip_forward_callback(self, interaction: discord.Interaction):
+		log_message("skip_forward_callback called", category="skip")
+		# Call the local skip_playback function directly to avoid intra-module import
+		ok = await skip_playback(interaction.guild, 1.0)
+		if not ok:
+			await interaction.response.send_message("Cannot skip - no active sound.", ephemeral=True)
+		else:
+			await interaction.response.defer()
 
 	async def play_sound_callback(self, interaction: discord.Interaction, sound: str):
 		log_message(f"play_sound_callback called for sound: {sound}", category="play_sound_callback")
@@ -281,7 +360,51 @@ async def play_sound(sound: str, guild: discord.Guild):
 
 	audio_source = discord.FFmpegPCMAudio(sound_path)
 	voice_client.play(audio_source)
+	# record playback state
+	try:
+		playback_state[guild.id] = {
+			'sound': sound,
+			'start_monotonic': __import__('time').monotonic(),
+			'base_offset': 0.0
+		}
+	except Exception:
+		pass
 	log_message(f"Playing {sound}.mp3", category="play_sound")
+
+async def skip_playback(guild: discord.Guild, delta_seconds: float):
+	"""Skip forward/backward by delta_seconds (can be negative) restarting ffmpeg at new offset."""
+	voice_client = discord.utils.get(bot.voice_clients, guild=guild)
+	if not voice_client or not voice_client.is_playing():
+		return False
+	state = playback_state.get(guild.id)
+	if not state:
+		return False
+	import time, math, os
+	sound = state.get('sound')
+	if not sound:
+		return False
+	sound_path = f'sound-clips/{sound}.mp3'
+	if not os.path.isfile(sound_path):
+		return False
+	elapsed = max(0.0, time.monotonic() - state.get('start_monotonic', time.monotonic()))
+	current_offset = state.get('base_offset', 0.0) + elapsed
+	new_offset = current_offset + float(delta_seconds)
+	if new_offset < 0:
+		new_offset = 0.0
+	# stop current playback
+	voice_client.stop()
+	# build before_options with seek
+	seek_arg = f"-ss {new_offset:.2f}"
+	before = f"{seek_arg} -nostdin -loglevel quiet"
+	audio_source = discord.FFmpegPCMAudio(sound_path, before_options=before)
+	voice_client.play(audio_source)
+	playback_state[guild.id] = {
+		'sound': sound,
+		'start_monotonic': time.monotonic(),
+		'base_offset': new_offset
+	}
+	log_message(f"Skipped playback {delta_seconds:+.2f}s -> offset {new_offset:.2f}s", category="play_sound")
+	return True
 
 # Function to stop sound
 async def stop_sound(guild: discord.Guild):
@@ -340,4 +463,8 @@ async def purge_and_repost_controls():
 		await post_controls_helper(channel, existing_message)
 
 async def main_bot():
-	await bot.start(bot_token)
+	try:
+		await bot.start(bot_token)
+	except asyncio.CancelledError:
+		await bot.close()
+		raise
